@@ -112,9 +112,11 @@ body, .card, .topbar, .sidebar, .stat-card, .modal,
 /* ── Reset ───────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
+html,body{overflow-x:hidden;max-width:100vw}
 body{font-family:'Poppins',sans-serif;background:var(--bg);color:var(--text);font-size:14.5px;line-height:1.6}
 a{color:inherit;text-decoration:none}
 img{max-width:100%;display:block}
+canvas{max-width:100%!important}
 ul{list-style:none}
 button,input,select,textarea{font-family:inherit;font-size:inherit}
 ::-webkit-scrollbar{width:5px;height:5px}
@@ -582,7 +584,7 @@ textarea.form-control{resize:vertical;min-height:80px}
    CHARTS
 ═══════════════════════════════════════════════ */
 .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.chart-wrap{position:relative;height:240px}
+.chart-wrap{position:relative;height:240px;max-width:100%;overflow:hidden}
 
 /* ═══════════════════════════════════════════════
    DASHBOARD

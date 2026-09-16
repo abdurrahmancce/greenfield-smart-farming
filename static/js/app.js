@@ -11,7 +11,6 @@
  */
 
 document.addEventListener("DOMContentLoaded", () => {
-  initSidebar();
   initFlash();
   initModals();
   initDate();
@@ -24,21 +23,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* ══════════════════════════════════════
    SIDEBAR
+   NOTE: sidebar/hamburger toggle is handled entirely by the inline
+   script in templates/base.html (hamburgerBtn + sidebar + sidebarOverlay).
+   Do not add another click handler here — having two listeners on the
+   same button toggles the class twice per click, which cancels itself
+   out and makes the menu look completely unresponsive.
 ══════════════════════════════════════ */
-function initSidebar() {
-  const sidebar   = document.querySelector(".sidebar");
-  const overlay   = document.querySelector(".sidebar-overlay");
-  const hamburger = document.querySelector(".hamburger");
-  if (!sidebar) return;
-  hamburger?.addEventListener("click", () => {
-    sidebar.classList.toggle("open");
-    overlay?.classList.toggle("visible");
-  });
-  overlay?.addEventListener("click", () => {
-    sidebar.classList.remove("open");
-    overlay.classList.remove("visible");
-  });
-}
 
 function highlightNav() {
   const path = window.location.pathname;
