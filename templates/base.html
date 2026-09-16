@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Apply saved theme before any CSS loads — prevents a white/light flash on dark mode -->
+  <script>
+    (function() {
+      var saved = localStorage.getItem('gf-theme');
+      if (saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=5.0"/>
+  <title>{% block title %}GreenField{% endblock %} — Smart Farming</title>
+  <!-- PWA -->
+  <link rel="manifest" href="/static/manifest.json"/>
+  <meta name="theme-color" content="#2E7D32"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="GreenField"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <!-- Icons — favicon + iOS home-screen icon (iOS ignores manifest.json icons) -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+  <link rel="icon" type="image/png" sizes="96x96"  href="/static/icons/icon-96.png"/>
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
+  <style>
+    /* User dropdown */
+    .user-menu{position:relative}
+    .user-btn{display:flex;align-items:center;gap:9px;background:var(--bg);
+      border:1.5px solid var(--border);border-radius:99px;
+      padding:5px 13px 5px 6px;cursor:pointer;transition:all .2s;font-size:13px;font-weight:600;color:var(--text)}
+    .user-btn:hover{background:#E8F5E9;border-color:var(--p-pale)}
+    .user-avatar{width:30px;height:30px;border-radius:50%;
+      background:linear-gradient(135deg,var(--p-mid),var(--p-light));
+      display:flex;align-items:center;justify-content:center;
+      font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+    .user-dropdown{position:absolute;top:calc(100% + 8px);right:0;
+      background:#fff;border:1px solid var(--border);border-radius:var(--r);
+      box-shadow:0 8px 32px rgba(0,0,0,.14);min-width:200px;
+      z-index:300;overflow:hidden;display:none;animation:dropIn .18s ease}
+    @keyframes dropIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+    .user-menu.open .user-dropdown{display:block}
+    .ud-head{padding:14px 16px;border-bottom:1px solid var(--border);background:#F9FFF9}
+    .ud-head strong{display:block;font-size:13.5px;color:var(--text)}
+    .ud-head span{font-size:11.5px;color:var(--muted)}
+    .ud-item{display:flex;align-items:center;gap:10px;padding:10px 16px;
+      font-size:13px;font-weight:500;color:var(--text);transition:background .15s;cursor:pointer}
+    .ud-item:hover{background:#F7FDF7}
+    .ud-item i{width:15px;text-align:center;color:var(--p-light);font-size:13px}
+    .ud-item.danger{color:#C62828}
+    .ud-item.danger i{color:#EF4444}
+    .ud-item.danger:hover{background:#FEF2F2}
+    .ud-divider{height:1px;background:var(--border);margin:4px 0}
+
+    /* ── Mobile PWA safe area fixes ─────────────────────────── */
+    /* The topbar is sticky at top:0, so it must reserve real space
+       for the device's notch/status bar — not just push its own
+       content down with padding, or the bar behind it stays
+       transparent/white and the title text still sits too close
+       to the clock/battery icons. */
+    .topbar {
+      padding-top: env(safe-area-inset-top, 0px);
+      box-sizing: border-box;
+    }
+    .sidebar {
+      padding-top: env(safe-area-inset-top, 0px);
+      box-sizing: border-box;
+    }
+
+    /* ── Mobile responsive overrides ────────────────────────── */
+    @media (max-width: 768px) {
+      /* Topbar: keep the safe-area reservation, add real breathing
+         room below the notch, and let height grow to fit both. */
+      .topbar {
+        padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+        min-height: calc(52px + env(safe-area-inset-top, 0px));
+        height: auto;
+      }
+      /* Hide date chip on small screens */
+      .topbar-chip { display: none; }
+      /* Theme toggle — slightly smaller on mobile */
+      .theme-toggle { width: 34px; height: 34px; font-size: 13px; }
+      /* Page padding — also respect safe area on the sides for
+         landscape/notched devices */
+      .page {
+        padding: 12px;
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
+      }
+      /* Stat cards — 2 column on mobile */
+      .stats-row {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px;
+      }
+      .stat-card { padding: 12px 10px; }
+      .stat-icon { width: 38px; height: 38px; font-size: 17px; }
+      .stat-info h3 { font-size: 20px; }
+      /* Dashboard grid — single column */
+      .dash-grid { grid-template-columns: 1fr !important; gap: 12px; }
+      /* Chart grid — single column */
+      .chart-grid { grid-template-columns: 1fr !important; }
+      /* Forecast — 4 cols */
+      .forecast-grid { grid-template-columns: repeat(4,1fr) !important; }
+      /* Form rows — single column */
+      .form-row { grid-template-columns: 1fr !important; }
+      /* NPK grid */
+      .npk-grid { grid-template-columns: 1fr 1fr !important; }
+      /* Table font size */
+      table { font-size: 12px; }
+      thead th { padding: 8px 10px; font-size: 10px; }
+      tbody td { padding: 9px 10px; }
+      /* Profile grid — single column */
+      .profile-grid {
+        display: block !important;
+      }
+      /* Cards full width */
+      .card { border-radius: 10px; }
+      /* Crop grid */
+      .crop-grid { grid-template-columns: 1fr !important; }
+      /* Irr grid */
+      .irr-grid { grid-template-columns: 1fr 1fr !important; }
+      /* Notes layout */
+      .notes-grid {
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      /* Fertilizer layout */
+      .fert-grid {
+        display: flex !important;
+        flex-direction: column !important;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .stats-row { grid-template-columns: 1fr 1fr !important; }
+      .stat-info h3 { font-size: 18px; }
+      .irr-grid { grid-template-columns: 1fr !important; }
+      .forecast-grid { grid-template-columns: repeat(3,1fr) !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="app-shell">
+  <!-- ═══ SIDEBAR ═══════════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo"><i class="fas fa-seedling"></i></div>
+      <div class="brand-text"><h2>GreenField</h2><span>Smart Farming Platform</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Main</div>
+      <a class="nav-link" href="{{ url_for('dashboard') }}">
+        <i class="fas fa-tachometer-alt"></i> Dashboard
+        <span style="font-size:10px;background:rgba(255,255,255,.15);padding:1px 6px;border-radius:99px;margin-left:auto">My Data</span>
+      </a>
+      <a class="nav-link" href="{{ url_for('index') }}">
+        <i class="fas fa-home"></i> Home Page
+        <span style="font-size:10px;opacity:.4;margin-left:auto">Public</span>
+      </a>
+      <div class="nav-section" style="margin-top:8px">Management</div>
+      <a class="nav-link" href="{{ url_for('farms') }}"><i class="fas fa-tractor"></i> Farm Management</a>
+      <a class="nav-link" href="{{ url_for('notes') }}"><i class="fas fa-book-open"></i> Farm Notes</a>
+      <div class="nav-section" style="margin-top:8px">Insights</div>
+      <a class="nav-link" href="{{ url_for('weather') }}"><i class="fas fa-cloud-sun"></i> Weather</a>
+      <a class="nav-link" href="{{ url_for('analytics') }}"><i class="fas fa-chart-line"></i> Analytics</a>
+      <a class="nav-link" href="{{ url_for('fertilizer') }}"><i class="fas fa-flask"></i> Fertilizer Calc</a>
+      {% if current_user %}
+      <div class="nav-section" style="margin-top:8px">Account</div>
+      <a class="nav-link" href="{{ url_for('profile') }}"><i class="fas fa-user-circle"></i> My Profile</a>
+      <a class="nav-link" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+      {% endif %}
+      <!-- Install App button — hidden until the browser confirms the app is installable -->
+      <button id="installAppBtn" class="nav-link" type="button"
+              style="display:none;width:100%;background:none;border:none;
+                     text-align:left;font-family:inherit;cursor:pointer;
+                     color:#4ade80;font-weight:700;margin-top:6px">
+        <i class="fas fa-download"></i> Install App
+      </button>
+    </nav>
+
+    {% if current_user %}
+    <!-- Sidebar user chip -->
+    <div style="padding:14px 16px;border-top:1px solid rgba(255,255,255,.07)">
+      <a href="{{ url_for('profile') }}"
+         style="display:flex;align-items:center;gap:11px;color:#fff;opacity:.8;transition:opacity .2s"
+         onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'">
+        <div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;
+             background:linear-gradient(135deg,var(--p-light),var(--accent));
+             display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">
+          {{ current_user.name[0].upper() }}
+        </div>
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ current_user.name }}</div>
+          <div style="font-size:10.5px;opacity:.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ current_user.email }}</div>
+        </div>
+        <i class="fas fa-cog" style="margin-left:auto;font-size:13px;opacity:.5;flex-shrink:0"></i>
+      </a>
+    </div>
+    {% else %}
+    <div class="sidebar-footer">🌿 GreenField v4.0</div>
+    {% endif %}
+  </aside>
+
+  <!-- ═══ MAIN ════════════════════════════════════════════════ -->
+  <div class="main-wrap">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+        <p>{% block page_sub %}{% endblock %}</p>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-chip"><i class="fas fa-calendar-day"></i><span id="liveDate"></span></div>
+
+        {% if current_user %}
+        <!-- User avatar dropdown -->
+        <div class="user-menu" id="userMenu">
+          <button class="user-btn" onclick="toggleMenu()" aria-label="User menu">
+            <div class="user-avatar">{{ current_user.name[0].upper() }}</div>
+            <span style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              {{ current_user.name.split()[0] }}
+            </span>
+            <i class="fas fa-chevron-down" style="font-size:10px;color:var(--muted)"></i>
+          </button>
+          <div class="user-dropdown">
+            <div class="ud-head">
+              <strong>{{ current_user.name }}</strong>
+              <span>{{ current_user.email }}</span>
+            </div>
+            <a class="ud-item" href="{{ url_for('profile') }}">
+              <i class="fas fa-user-circle"></i> My Profile
+            </a>
+            <a class="ud-item" href="{{ url_for('dashboard') }}">
+              <i class="fas fa-chart-pie"></i> Dashboard
+            </a>
+            <a class="ud-item" href="{{ url_for('farms') }}">
+              <i class="fas fa-tractor"></i> My Farms
+            </a>
+            <div class="ud-divider"></div>
+            <a class="ud-item danger" href="{{ url_for('logout') }}">
+              <i class="fas fa-sign-out-alt"></i> Logout
+            </a>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Dark mode toggle — always visible, desktop & mobile -->
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+          <i class="fas fa-moon" id="themeIcon"></i>
+        </button>
+
+        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Flash messages -->
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+    <div class="flash-wrap">
+      {% for cat,msg in msgs %}
+      <div class="flash {{ cat }}">
+        <i class="fas fa-{{ 'check-circle' if cat=='success' else 'exclamation-circle' }}"></i>
+        <span>{{ msg|safe }}</span>
+        <button class="flash-close">&times;</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <main class="page">{% block content %}{% endblock %}</main>
+  </div>
+</div>
+
+<script src="{{ url_for('static',filename='js/app.js') }}"></script>
+<script>
+// Hamburger menu
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const sidebar      = document.getElementById('sidebar');
+const overlay      = document.getElementById('sidebarOverlay');
+
+if (hamburgerBtn) {
+  hamburgerBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('visible');
+  });
+}
+if (overlay) {
+  overlay.addEventListener('click', function() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('visible');
+  });
+}
+// Close sidebar when nav link clicked on mobile
+document.querySelectorAll('.nav-link').forEach(function(link) {
+  link.addEventListener('click', function() {
+    if (window.innerWidth <= 768) {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('visible');
+    }
+  });
+});
+
+// User dropdown toggle
+function toggleMenu() {
+  document.getElementById('userMenu').classList.toggle('open');
+}
+// Close on outside click
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('userMenu');
+  if (menu && !menu.contains(e.target)) menu.classList.remove('open');
+});
+
+// ── Dark mode toggle ──────────────────────────────────
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon   = document.getElementById('themeIcon');
+const htmlEl      = document.documentElement;
+
+function updateThemeIcon() {
+  const isDark = htmlEl.getAttribute('data-theme') === 'dark';
+  if (themeIcon) {
+    themeIcon.classList.toggle('fa-moon', !isDark);
+    themeIcon.classList.toggle('fa-sun', isDark);
+  }
+}
+updateThemeIcon(); // set correct icon on page load (theme already applied by the inline script in <head>)
+
+if (themeToggle) {
+  themeToggle.addEventListener('click', function() {
+    const isDark = htmlEl.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      htmlEl.removeAttribute('data-theme');
+      localStorage.setItem('gf-theme', 'light');
+    } else {
+      htmlEl.setAttribute('data-theme', 'dark');
+      localStorage.setItem('gf-theme', 'dark');
+    }
+    updateThemeIcon();
+  });
+}
+</script>
+{% block scripts %}{% endblock %}
+<script>
+// PWA Service Worker registration
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/static/sw.js")
+    .then(() => console.log("GreenField SW registered ✅"))
+    .catch(e => console.log("SW error:", e));
+}
+
+// ── PWA Install Prompt ──────────────────────────────────
+// Chrome/Edge fire beforeinstallprompt when the site passes PWA criteria
+// (valid manifest + icons + registered service worker + served over HTTPS).
+// We capture it so we can show our own "Install App" button instead of
+// waiting for the browser's own UI, which many users never notice.
+let deferredInstallPrompt = null;
+const installBtn = document.getElementById('installAppBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (installBtn) installBtn.style.display = 'flex';
+});
+
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    console.log('Install prompt outcome:', outcome);
+    deferredInstallPrompt = null;
+    installBtn.style.display = 'none';
+  });
+}
+
+// Hide the install button once the app is actually installed
+window.addEventListener('appinstalled', () => {
+  if (installBtn) installBtn.style.display = 'none';
+  deferredInstallPrompt = null;
+});
+
+// If already running as an installed PWA, never show the button
+if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+  if (installBtn) installBtn.style.display = 'none';
+}
+</script>
+</body>
+</html>

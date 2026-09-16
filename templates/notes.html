@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Farm Notes{% endblock %}
+{% block page_title %}Farm Notes{% endblock %}
+{% block page_sub %}Add, edit, delete observations per farm.{% endblock %}
+
+{% block content %}
+<div class="notes-grid" style="display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start">
+
+  <!-- LEFT: Add form + Tips -->
+  <div>
+    <!-- Add Note -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-pen"></i> Add Note</h2>
+      </div>
+      <div class="card-body">
+        <form action="{{ url_for('add_note') }}" method="POST">
+          <div class="form-group">
+            <label>Farm *</label>
+            <select name="farm_id" class="form-control" required>
+              <option value="">— Choose a farm —</option>
+              {% for f in farms %}
+              <option value="{{ f.id }}">{{ f.farm_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Title</label>
+            <input type="text" name="title" class="form-control" placeholder="e.g. Fertilizer Applied"/>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select name="category" class="form-control">
+              <option value="General">General</option>
+              <option value="Nutrition">Nutrition</option>
+              <option value="Pest Control">Pest Control</option>
+              <option value="Irrigation">Irrigation</option>
+              <option value="Growth">Growth</option>
+              <option value="Harvest">Harvest</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Note *</label>
+            <textarea name="note" class="form-control" rows="4"
+              placeholder="Write your observation here…" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary w-full">
+            <i class="fas fa-plus-circle"></i> Save Note
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Farming Tips -->
+    <div class="card mt-20">
+      <div class="card-header">
+        <h2><i class="fas fa-lightbulb"></i> Farming Tips</h2>
+        <span class="badge badge-teal">Expert</span>
+      </div>
+      <div class="card-body" style="padding:10px 20px">
+        {% for icon,title,body in [
+          ("tint","Water in the morning","Reduces evaporation and prevents fungal disease."),
+          ("flask","Soil test before fertilizing","Know your pH before applying any fertilizer."),
+          ("bug","Use IPM","Natural predators first, chemicals last."),
+          ("recycle","Crop rotation","Breaks pest cycles and restores soil nutrients."),
+          ("sun","Check sun exposure","Most crops need 6–8 hours of direct sunlight."),
+          ("layer-group","Mulch your beds","5 cm of mulch retains moisture and suppresses weeds."),
+          ("seedling","Harden seedlings","7–10 days outdoor exposure before transplanting."),
+        ] %}
+        <div class="tip-item">
+          <i class="fas fa-{{ icon }}"></i>
+          <div><strong>{{ title }}</strong><p>{{ body }}</p></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Notes list -->
+  <div>
+    <!-- Search bar -->
+    <div class="toolbar">
+      <div class="search-wrap" style="max-width:100%;flex:1">
+        <i class="fas fa-search"></i>
+        <input id="tableSearch" type="text" class="search-input" placeholder="Search notes…"/>
+      </div>
+      <span class="badge badge-green">{{ notes|length }} note{{ 's' if notes|length!=1 }}</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-sticky-note"></i> All Notes</h2>
+      </div>
+      <div class="card-body" style="padding:6px 18px">
+        {% if notes %}
+          {% for n in notes %}
+          {% set cat = n.category|lower|replace(' ','') %}
+          <div class="note-item" data-searchable>
+            <!-- Icon -->
+            <div class="note-icon {{ cat }}">
+              <i class="fas fa-{{ 'flask' if cat=='nutrition' else 'bug' if cat=='pestcontrol' else 'tint' if cat=='irrigation' else 'seedling' if cat=='growth' else 'wheat-awn' if cat=='harvest' else 'sticky-note' }}"></i>
+            </div>
+            <!-- Body -->
+            <div class="note-body">
+              <div class="note-title">{{ n.title }}</div>
+              <div class="note-text">{{ n.note }}</div>
+              <div class="note-meta">
+                <span><i class="fas fa-tractor"></i>{{ n.farm_name }}</span>
+                <span><i class="fas fa-clock"></i>{{ n.created_at[:16] }}</span>
+                <span class="badge badge-{{ 'green' if cat in ['growth','harvest'] else 'blue' if cat=='irrigation' else 'amber' if cat=='nutrition' else 'red' if cat=='pestcontrol' else 'gray' }}">
+                  {{ n.category }}
+                </span>
+              </div>
+            </div>
+            <!-- Actions -->
+            <div class="note-actions">
+              <!-- Edit button — calls editNote(id) in JS -->
+              <button class="btn btn-secondary btn-sm btn-icon" title="Edit"
+                onclick="editNote({{ n.id }})">
+                <i class="fas fa-edit"></i>
+              </button>
+              <!-- Delete hidden form -->
+              <form id="del-note-{{ n.id }}"
+                action="{{ url_for('delete_note', nid=n.id) }}"
+                method="POST" style="display:none"></form>
+              <button class="btn btn-danger btn-sm btn-icon" title="Delete"
+                onclick="deleteNote({{ n.id }})">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty">
+            <i class="fas fa-book-open"></i>
+            <h3>No notes yet</h3>
+            <p>Select a farm on the left and log your first observation.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ EDIT NOTE MODAL ═══════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="editNoteModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-edit" style="color:var(--p-light)"></i> Edit Note</h3>
+      <button class="btn-x" data-close="editNoteModal">&times;</button>
+    </div>
+    <form action="#" method="POST">
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" name="title" class="form-control" placeholder="Observation title"/>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category" class="form-control">
+            <option value="General">General</option>
+            <option value="Nutrition">Nutrition</option>
+            <option value="Pest Control">Pest Control</option>
+            <option value="Irrigation">Irrigation</option>
+            <option value="Growth">Growth</option>
+            <option value="Harvest">Harvest</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Note *</label>
+          <textarea name="note" class="form-control" rows="5" required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="editNoteModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

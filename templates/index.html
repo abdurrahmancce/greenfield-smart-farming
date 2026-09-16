@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    (function() {
+      var saved = localStorage.getItem('gf-theme');
+      if (saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <title>GreenField — Smart Farming Platform</title>
+  <!-- PWA -->
+  <link rel="manifest" href="/static/manifest.json"/>
+  <meta name="theme-color" content="#2E7D32"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="GreenField"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
+  <style>
+    /* Extra home-only styles */
+    .home-page { background: var(--bg); }
+    .how-grid  { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:22px; max-width:900px; margin:0 auto; }
+    .how-card  { text-align:center; padding:28px 20px; background:#fff; border:1px solid var(--border); border-radius:var(--r); }
+    .how-num   { width:44px;height:44px;border-radius:50%;background:var(--p-mid);color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 14px; }
+    .how-card h3 { font-size:15px;font-weight:700;color:var(--p);margin-bottom:6px; }
+    .how-card p  { font-size:13px;color:var(--muted);line-height:1.6; }
+    .logged-banner { background:linear-gradient(90deg,#E8F5E9,#F1FAF1); border:1px solid var(--border); border-radius:14px; padding:20px 28px; display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:0; }
+    .logged-banner h3 { font-size:17px;font-weight:800;color:var(--p); }
+    .logged-banner p  { font-size:13px;color:var(--muted);margin-top:4px; }
+  </style>
+</head>
+<body class="home-page">
+
+<!-- ── NAVBAR ─────────────────────────────────────────────────── -->
+<nav class="home-nav">
+  <div class="home-brand"><i class="fas fa-seedling"></i> GreenField</div>
+  <div class="home-nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    {% if current_user %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-tachometer-alt"></i> Go to Dashboard
+      </a>
+    {% else %}
+      <a href="{{ url_for('login') }}" style="font-weight:600;color:var(--p-mid)">Login</a>
+      <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-user-plus"></i> Register Free
+      </a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- ── LOGGED-IN BANNER (only for authenticated users) ─────────── -->
+{% if current_user %}
+<div style="background:#E8F5E9;border-bottom:1px solid var(--border);padding:12px 44px">
+  <div class="logged-banner">
+    <div>
+      <h3>👋 Welcome back, {{ current_user.name.split()[0] }}!</h3>
+      <p>You're logged in. Jump straight to your farm dashboard.</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+        <i class="fas fa-tachometer-alt"></i> Dashboard
+      </a>
+      <a href="{{ url_for('farms') }}" class="btn btn-secondary">
+        <i class="fas fa-tractor"></i> My Farms
+      </a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── HERO ───────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hc c1"></div>
+  <div class="hc c2"></div>
+  <div class="hc c3"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">
+      <i class="fas fa-leaf"></i> Smart Agriculture Platform
+    </div>
+    <h1>Farm Smarter,<br/><em>Harvest Better</em></h1>
+    <p class="hero-sub">
+      GreenField gives you real-time crop monitoring, live weather insights,
+      irrigation scheduling, and data-driven analytics — all in one clean
+      dashboard built for modern farmers.
+    </p>
+    <div class="hero-cta">
+      {% if current_user %}
+        <a href="{{ url_for('dashboard') }}" class="btn-hp">
+          <i class="fas fa-tachometer-alt"></i> Open My Dashboard
+        </a>
+        <a href="{{ url_for('farms') }}" class="btn-hs">
+          <i class="fas fa-tractor"></i> Manage Farms
+        </a>
+      {% else %}
+        <a href="{{ url_for('register') }}" class="btn-hp">
+          <i class="fas fa-user-plus"></i> Get Started Free
+        </a>
+        <a href="{{ url_for('login') }}" class="btn-hs">
+          <i class="fas fa-sign-in-alt"></i> Sign In
+        </a>
+      {% endif %}
+      <button id="installAppBtnHome" type="button" class="btn-hs" style="display:none">
+        <i class="fas fa-download"></i> Install App
+      </button>
+    </div>
+    <div class="hero-stats">
+      <div class="hstat"><h3>6</h3><p>Smart Modules</p></div>
+      <div class="hstat"><h3>50+</h3><p>Crop Types</p></div>
+      <div class="hstat"><h3>Live</h3><p>Weather API</p></div>
+      <div class="hstat"><h3>Free</h3><p>Open Source</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ───────────────────────────────────────────────── -->
+<section class="features-sec" id="features">
+  <div class="sec-label">Everything you need</div>
+  <h2 class="sec-title">Built for Modern Agriculture</h2>
+  <p class="sec-sub">From planting day to harvest — GreenField keeps you informed and in control.</p>
+  <div class="features-grid">
+    {% for icon, title, desc, tag in [
+      ('tachometer-alt', 'Dashboard',          'Live stats — total farms, crop varieties, area, weather snapshot and recent activity all in one view.',         'Live'),
+      ('tractor',        'Farm Management',    'Add, edit, delete farms. Full crop monitor with growth stage, water level, soil moisture progress bars.',       'CRUD'),
+      ('cloud-sun',      'Live Weather',       'Real OpenWeather API integration with 7-day forecast, farming advice and city search.',                        'API'),
+      ('chart-line',     'Analytics',          '4 interactive Chart.js charts — farm areas, water usage, harvest trends, crop distribution doughnut.',         'Charts'),
+      ('flask',          'Fertilizer Calc',    'N-P-K calculator with results that save to your account — edit and delete old calculations anytime.',          'Saved'),
+      ('book-open',      'Farm Notes',         '6-category farm log — add observations per farm, edit and delete notes with live search filter.',              'Editable'),
+      ('tint',           'Irrigation Planner', 'Smart per-crop watering reminders with urgency alerts and water requirement calculations.',                    'Smart'),
+      ('user-shield',    'User Auth',          'Secure register, login, logout. Password hashing. Each user sees only their own farms and data.',              'Secure'),
+    ] %}
+    <div class="feat-card">
+      <div class="feat-icon"><i class="fas fa-{{ icon }}"></i></div>
+      <h3>{{ title }}</h3>
+      <p>{{ desc }}</p>
+      <span class="feat-tag">{{ tag }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ───────────────────────────────────────────── -->
+<section style="padding:72px 44px;background:var(--bg)" id="how">
+  <div class="sec-label">Simple setup</div>
+  <h2 class="sec-title">How It Works</h2>
+  <p class="sec-sub">Ready in 3 steps — no credit card, no cloud required.</p>
+  <div class="how-grid">
+    <div class="how-card">
+      <div class="how-num">1</div>
+      <h3>Create Account</h3>
+      <p>Register with your name, email and password. Your data stays private — only you can see your farms.</p>
+    </div>
+    <div class="how-card">
+      <div class="how-num">2</div>
+      <h3>Add Your Farms</h3>
+      <p>Enter farm name, crop type, location, area and planting date. Monitor crop health with live progress bars.</p>
+    </div>
+    <div class="how-card">
+      <div class="how-num">3</div>
+      <h3>Track & Analyse</h3>
+      <p>Check live weather, view analytics charts, calculate fertilizer, log notes — all from one dashboard.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── STATS BANNER ───────────────────────────────────────────── -->
+<div class="stats-banner">
+  <div class="sb-item"><h2>6</h2><p>Smart Modules</p></div>
+  <div class="sb-item"><h2>100%</h2><p>Free & Open Source</p></div>
+  <div class="sb-item"><h2>Live</h2><p>OpenWeather API</p></div>
+  <div class="sb-item"><h2>Secure</h2><p>Password Hashing</p></div>
+</div>
+
+<!-- ── CTA ───────────────────────────────────────────────────── -->
+<section class="cta-banner">
+  <i class="fas fa-seedling" style="font-size:38px;color:var(--p-light)"></i>
+  <h2>Ready to grow smarter?</h2>
+  <p>Join GreenField today — free forever, runs locally on your machine.</p>
+  {% if current_user %}
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary"
+       style="font-size:15px;padding:13px 30px;display:inline-flex">
+      <i class="fas fa-tachometer-alt"></i> Go to My Dashboard
+    </a>
+  {% else %}
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <a href="{{ url_for('register') }}" class="btn btn-primary"
+         style="font-size:15px;padding:13px 30px">
+        <i class="fas fa-user-plus"></i> Create Free Account
+      </a>
+      <a href="{{ url_for('login') }}" class="btn btn-secondary"
+         style="font-size:15px;padding:13px 30px">
+        <i class="fas fa-sign-in-alt"></i> Sign In
+      </a>
+    </div>
+  {% endif %}
+</section>
+
+<!-- ── FOOTER ────────────────────────────────────────────────── -->
+<footer class="home-footer">
+  🌱 GreenField Smart Farming &nbsp;|&nbsp;
+  Flask · SQLite · Chart.js · OpenWeather &nbsp;|&nbsp;
+  <a href="{{ url_for('dashboard') }}">Dashboard</a> ·
+  <a href="{{ url_for('farms') }}">Farms</a> ·
+  <a href="{{ url_for('notes') }}">Notes</a>
+  {% if not current_user %}
+  &nbsp;|&nbsp;
+  <a href="{{ url_for('register') }}">Register</a> ·
+  <a href="{{ url_for('login') }}">Login</a>
+  {% endif %}
+</footer>
+
+<!-- inject current_user for Jinja (uses app context_processor) -->
+<script src="{{ url_for('static',filename='js/app.js') }}"></script>
+<script>
+// PWA Service Worker registration
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/static/sw.js")
+    .then(() => console.log("GreenField SW registered ✅"))
+    .catch(e => console.log("SW error:", e));
+}
+
+// Install prompt — same pattern as base.html
+let deferredInstallPrompt = null;
+const installBtnHome = document.getElementById('installAppBtnHome');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (installBtnHome) installBtnHome.style.display = 'inline-flex';
+});
+
+if (installBtnHome) {
+  installBtnHome.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installBtnHome.style.display = 'none';
+  });
+}
+
+window.addEventListener('appinstalled', () => {
+  if (installBtnHome) installBtnHome.style.display = 'none';
+});
+
+if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+  if (installBtnHome) installBtnHome.style.display = 'none';
+}
+</script>
+</body>
+</html>

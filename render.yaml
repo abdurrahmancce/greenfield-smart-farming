@@ -1,0 +1,35 @@
+databases:
+  - name: greenfield-postgres
+    plan: free
+    databaseName: greenfield
+    user: greenfield_user
+
+services:
+  - type: web
+    name: greenfield-smart-farming
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: OPENWEATHER_KEY
+        value: ""
+      - key: DATABASE_URL
+        fromDatabase:
+          name: greenfield-postgres
+          property: connectionString
+      - key: APP_BASE_URL
+        value: "https://greenfield-smart-farming.onrender.com"
+      # Optional — for real password-reset emails via Gmail SMTP.
+      # Leave blank to have reset links printed to the server log instead.
+      - key: MAIL_SERVER
+        value: ""
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        value: ""
+      - key: MAIL_PASSWORD
+        value: ""

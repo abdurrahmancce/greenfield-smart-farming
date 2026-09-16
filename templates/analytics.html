@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+{% block page_sub %}Visual insights into your farm data and performance.{% endblock %}
+{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
+
+{% block content %}
+<div class="stats-row" style="margin-bottom:22px">
+  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-map"></i></div><div class="stat-info"><h3>{{ labels|length }}</h3><p>Farms Tracked</p></div></div>
+  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-tint"></i></div><div class="stat-info"><h3>{{ water[-1] }}L</h3><p>Water This Month</p></div></div>
+  <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-seedling"></i></div><div class="stat-info"><h3>{{ harvest[-1] }}t</h3><p>Last Harvest</p></div></div>
+  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-chart-line"></i></div>
+    <div class="stat-info"><h3>+{{ (((harvest[-1]-harvest[-2])/harvest[-2])*100)|round(1) }}%</h3><p>Harvest Growth</p></div>
+  </div>
+</div>
+
+<div class="chart-grid">
+  <div class="card"><div class="card-header"><h2><i class="fas fa-chart-bar"></i> Farm Areas (acres)</h2></div>
+    <div class="card-body"><div class="chart-wrap">
+      <canvas id="chartFarmArea" data-labels='{{ labels|tojson }}' data-values='{{ areas|tojson }}'></canvas>
+    </div></div></div>
+  <div class="card"><div class="card-header"><h2><i class="fas fa-tint"></i> Monthly Water Usage (L)</h2></div>
+    <div class="card-body"><div class="chart-wrap">
+      <canvas id="chartWater" data-labels='{{ months|tojson }}' data-values='{{ water|tojson }}'></canvas>
+    </div></div></div>
+  <div class="card"><div class="card-header"><h2><i class="fas fa-seedling"></i> Monthly Harvest (tonnes)</h2></div>
+    <div class="card-body"><div class="chart-wrap">
+      <canvas id="chartHarvest" data-labels='{{ months|tojson }}' data-values='{{ harvest|tojson }}'></canvas>
+    </div></div></div>
+  <div class="card"><div class="card-header"><h2><i class="fas fa-chart-pie"></i> Crop Distribution</h2></div>
+    <div class="card-body"><div class="chart-wrap">
+      <canvas id="chartCrops" data-labels='{{ crops|tojson }}' data-values='{{ areas|tojson }}'></canvas>
+    </div></div></div>
+</div>
+
+<!-- Fertilizer Calculator -->
+<div class="card mt-20">
+  <div class="card-header">
+    <h2><i class="fas fa-flask"></i> Fertilizer Calculator</h2>
+    <span class="badge badge-blue">N · P · K</span>
+  </div>
+  <div class="card-body">
+    <p class="text-muted fs-12" style="margin-bottom:18px">Enter crop type and area to get nitrogen, phosphorus, potassium and urea recommendations.</p>
+    <form id="fertForm">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="margin:0;flex:1;min-width:160px">
+          <label>Crop Type</label>
+          <select name="calc_crop" class="form-control" required>
+            <option value="">— Select —</option>
+            <option value="rice">Rice</option><option value="wheat">Wheat</option>
+            <option value="maize">Maize</option><option value="tomato">Tomato</option>
+            <option value="potato">Potato</option><option value="jute">Jute</option>
+            <option value="mustard">Mustard</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;flex:1;min-width:140px">
+          <label>Area (acres)</label>
+          <input type="number" name="calc_area" class="form-control" placeholder="e.g. 3.5" step="0.1" min="0.1" required/>
+        </div>
+        <button type="submit" class="btn btn-primary" style="flex-shrink:0">
+          <i class="fas fa-calculator"></i> Calculate
+        </button>
+      </div>
+    </form>
+    <div id="calcOut"></div>
+  </div>
+</div>
+
+<!-- Farm Stats Table -->
+{% if labels %}
+<div class="card mt-20">
+  <div class="card-header">
+    <h2><i class="fas fa-table"></i> Farm Statistics</h2>
+    <span class="badge badge-green">{{ labels|length }} farms</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Farm</th><th>Crop</th><th>Area</th><th>Est. Yield</th><th>Water/Wk</th><th>Size</th></tr></thead>
+      <tbody>
+        {% for i in range(labels|length) %}
+        <tr>
+          <td style="color:var(--muted);font-size:11px">{{ loop.index }}</td>
+          <td><strong>{{ labels[i] }}</strong></td>
+          <td><span class="badge badge-green"><i class="fas fa-{{ crop_icon(crops[i]) }}"></i> {{ crops[i] }}</span></td>
+          <td>{{ areas[i] }} ac</td>
+          <td>{{ (areas[i]*2.5)|round(1) }} t</td>
+          <td>{{ (areas[i]*45)|round(0)|int }} L</td>
+          <td><span class="badge {{ 'badge-green' if areas[i]>=5 else 'badge-blue' if areas[i]>=3 else 'badge-amber' }}">
+            {{ 'Large' if areas[i]>=5 else 'Medium' if areas[i]>=3 else 'Small' }}
+          </span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if status_data %}
+<div class="card mt-20">
+  <div class="card-header"><h2><i class="fas fa-tags"></i> Farms by Status</h2></div>
+  <div class="card-body">
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      {% for s in status_data %}
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:16px 24px;text-align:center;min-width:110px">
+        <div style="font-size:28px;font-weight:800;color:var(--p-mid)">{{ s.cnt }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">{{ s.status }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

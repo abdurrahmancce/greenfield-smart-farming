@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block title %}My Profile{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block page_sub %}Manage your account — info, email, password, and settings.{% endblock %}
+
+{% block content %}
+
+<!-- ── Top Profile Card ──────────────────────────────────────── -->
+<div class="profile-grid" style="display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start;margin-bottom:20px">
+
+  <!-- Avatar + Stats -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <div class="card">
+      <div class="card-body" style="text-align:center;padding:28px 20px">
+        <!-- Avatar circle with initial -->
+        <div id="avatarCircle" style="
+          width:80px;height:80px;border-radius:50%;
+          background:{{ user.avatar_color or '#2E7D32' }};
+          color:#fff;font-size:32px;font-weight:800;
+          display:flex;align-items:center;justify-content:center;
+          margin:0 auto 14px;
+          box-shadow:0 4px 16px rgba(46,125,50,.3);
+          cursor:pointer;title:Click to change colour
+          transition:transform .2s ease">
+          {{ user.name[0].upper() }}
+        </div>
+        <div style="font-size:18px;font-weight:800;color:var(--text)">{{ user.name }}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:3px">{{ user.email }}</div>
+        {% if user.phone %}
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">
+          <i class="fas fa-phone" style="color:var(--p-light)"></i> {{ user.phone }}
+        </div>
+        {% endif %}
+        {% if user.location %}
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">
+          <i class="fas fa-map-marker-alt" style="color:var(--p-light)"></i> {{ user.location }}
+        </div>
+        {% endif %}
+        <span class="badge badge-green" style="margin-top:10px;font-size:12px">
+          <i class="fas fa-seedling"></i> {{ user.role|capitalize }}
+        </span>
+        {% if user.bio %}
+        <div style="margin-top:12px;font-size:12.5px;color:var(--muted);font-style:italic;
+             background:var(--bg);border-radius:8px;padding:10px;line-height:1.5">
+          "{{ user.bio }}"
+        </div>
+        {% endif %}
+        <div style="margin-top:12px;font-size:11px;color:var(--muted)">
+          <i class="fas fa-calendar-alt"></i>
+          Member since {{ user.created_at[:10] }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Card -->
+    <div class="card">
+      <div class="card-header"><h2><i class="fas fa-chart-pie"></i> Your Stats</h2></div>
+      <div class="card-body" style="padding:14px 20px">
+        {% for icon, val, label, col in [
+          ('tractor',     stats.farms,  'Total Farms',    'si-g'),
+          ('book-open',   stats.notes,  'Farm Notes',     'si-p'),
+          ('ruler-combined', stats.area|string + ' ac', 'Total Area', 'si-b'),
+          ('flask',       stats.calcs,  'Fert. Calcs',    'si-t'),
+        ] %}
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;
+             border-bottom:1px solid #EEF6EE">
+          <div class="stat-icon {{ col }}" style="width:38px;height:38px;font-size:16px;flex-shrink:0">
+            <i class="fas fa-{{ icon }}"></i>
+          </div>
+          <div>
+            <div style="font-size:18px;font-weight:800;line-height:1">{{ val }}</div>
+            <div style="font-size:11px;color:var(--muted)">{{ label }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Recent Farms -->
+    {% if stats.recent_farms %}
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-tractor"></i> Recent Farms</h2>
+        <a href="{{ url_for('farms') }}" class="btn btn-secondary btn-sm">All</a>
+      </div>
+      <div class="card-body" style="padding:10px 20px">
+        {% for f in stats.recent_farms %}
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;
+             border-bottom:1px solid #EEF6EE">
+          <i class="fas fa-leaf" style="color:var(--p-light);font-size:14px"></i>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">{{ f.farm_name }}</div>
+            <div style="font-size:11px;color:var(--muted)">{{ f.crop_type }} · {{ f.area }} ac</div>
+          </div>
+          <span class="badge {{ 'badge-green' if f.status=='Active' else 'badge-amber' if f.status=='Harvesting' else 'badge-blue' }}">
+            {{ f.status }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- RIGHT: Edit Forms -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- 1. Update Profile Info -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-user-edit"></i> Edit Profile Info</h2>
+        <span class="badge badge-green">Personal Details</span>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="action" value="update_info"/>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Full Name *</label>
+              <input type="text" name="name" class="form-control"
+                     value="{{ user.name }}" required/>
+            </div>
+            <div class="form-group">
+              <label>Phone Number</label>
+              <input type="text" name="phone" class="form-control"
+                     placeholder="+880 1xxx-xxxxxx"
+                     value="{{ user.phone or '' }}"/>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Location / City</label>
+              <input type="text" name="location" class="form-control"
+                     placeholder="e.g. Chittagong, Bangladesh"
+                     value="{{ user.location or '' }}"/>
+            </div>
+            <div class="form-group">
+              <label>Farm / Business Name</label>
+              <input type="text" name="farm_name" class="form-control"
+                     placeholder="e.g. Green Valley Agro"
+                     value="{{ user.farm_name or '' }}"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Bio / About You</label>
+            <textarea name="bio" class="form-control" rows="2"
+                      placeholder="e.g. Rice farmer from Sylhet with 10 years experience…">{{ user.bio or '' }}</textarea>
+          </div>
+          <!-- Avatar colour picker -->
+          <div class="form-group">
+            <label>Avatar Colour</label>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              {% for col in ['#1B5E20','#2E7D32','#0277BD','#6A1B9A','#AD1457','#E65100','#37474F','#00695C'] %}
+              <label style="cursor:pointer">
+                <input type="radio" name="avatar_color" value="{{ col }}"
+                       {{ 'checked' if (user.avatar_color or '#2E7D32')==col }}
+                       style="display:none" onchange="document.getElementById('avatarCircle').style.background='{{ col }}'"/>
+                <div style="width:30px;height:30px;border-radius:50%;background:{{ col }};
+                     border:3px solid {{ '#fff' if (user.avatar_color or '#2E7D32')!=col else col }};
+                     box-shadow:0 0 0 2px {{ col }};transition:all .2s"></div>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> Save Profile
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 2. Change Email -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-envelope"></i> Change Email</h2>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="action" value="change_email"/>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Current Email</label>
+              <input type="text" class="form-control" value="{{ user.email }}" disabled
+                     style="opacity:.6;cursor:not-allowed"/>
+            </div>
+            <div class="form-group">
+              <label>New Email *</label>
+              <input type="email" name="new_email" class="form-control"
+                     placeholder="new@email.com" required/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Confirm with Password *</label>
+            <input type="password" name="password_confirm" class="form-control"
+                   placeholder="Enter your current password" required/>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-envelope"></i> Update Email
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 3. Change Password -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-lock"></i> Change Password</h2>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="action" value="change_password"/>
+          <div class="form-group">
+            <label>Current Password *</label>
+            <input type="password" name="current_password" class="form-control"
+                   placeholder="Your current password" required/>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>New Password *</label>
+              <input type="password" name="new_password" id="newPw"
+                     class="form-control" placeholder="Min. 6 characters"
+                     oninput="checkPwStrength(this.value)" required/>
+              <!-- Strength bar -->
+              <div style="margin-top:6px">
+                <div style="background:#E8F5E9;border-radius:99px;height:5px;overflow:hidden">
+                  <div id="pwBar" style="height:100%;border-radius:99px;width:0%;transition:all .3s"></div>
+                </div>
+                <div id="pwLabel" style="font-size:11px;color:var(--muted);margin-top:3px"></div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Confirm New Password *</label>
+              <input type="password" name="confirm_password" class="form-control"
+                     placeholder="Repeat new password" required/>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-key"></i> Change Password
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 4. Account Info -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-info-circle"></i> Account Info</h2>
+      </div>
+      <div class="card-body" style="padding:14px 20px">
+        {% for label, val in [
+          ('Account ID',    '#' + user.id|string),
+          ('Email',         user.email),
+          ('Role',          user.role|capitalize),
+          ('Phone',         user.phone or '—'),
+          ('Location',      user.location or '—'),
+          ('Farm Name',     user.farm_name or '—'),
+          ('Member Since',  user.created_at[:16]),
+          ('Data Storage',  'Local SQLite Database'),
+        ] %}
+        <div style="display:flex;justify-content:space-between;align-items:center;
+             padding:9px 0;border-bottom:1px solid #EEF6EE;font-size:13px">
+          <span style="color:var(--muted);font-weight:600">{{ label }}</span>
+          <span style="font-weight:500;color:var(--text)">{{ val }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 5. Danger Zone — Delete Account -->
+    <div class="card" style="border:1px solid #FFCDD2">
+      <div class="card-header" style="background:linear-gradient(90deg,#FFF5F5,transparent)">
+        <h2 style="color:#C62828"><i class="fas fa-exclamation-triangle"></i> Danger Zone</h2>
+        <span class="badge badge-red">Irreversible</span>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+          Deleting your account will permanently remove <strong>all your farms, notes,
+          fertilizer calculations, and activity logs</strong>. This cannot be undone.
+        </p>
+        <button class="btn btn-danger" onclick="openModal('deleteAccountModal')">
+          <i class="fas fa-trash-alt"></i> Delete My Account
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ DELETE ACCOUNT MODAL ════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="deleteAccountModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header" style="background:linear-gradient(90deg,#FFF5F5,transparent)">
+      <h3 style="color:#C62828">
+        <i class="fas fa-exclamation-triangle"></i> Delete Account
+      </h3>
+      <button class="btn-x" data-close="deleteAccountModal">&times;</button>
+    </div>
+    <form method="POST">
+      <input type="hidden" name="action" value="delete_account"/>
+      <div class="modal-body">
+        <div style="background:#FFF5F5;border:1px solid #FFCDD2;border-radius:8px;
+             padding:14px;margin-bottom:16px;font-size:13px;color:#C62828">
+          <i class="fas fa-warning"></i>
+          This will permanently delete your account and <strong>ALL data</strong> including
+          {{ stats.farms }} farm(s), {{ stats.notes }} note(s), and {{ stats.calcs }} calculation(s).
+        </div>
+        <div class="form-group">
+          <label>Enter your password *</label>
+          <input type="password" name="delete_password" class="form-control"
+                 placeholder="Your current password" required/>
+        </div>
+        <div class="form-group">
+          <label>Type <strong>DELETE</strong> to confirm *</label>
+          <input type="text" name="delete_confirm" class="form-control"
+                 placeholder="Type DELETE here" required/>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="deleteAccountModal">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-danger">
+          <i class="fas fa-trash-alt"></i> Yes, Delete Forever
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function checkPwStrength(pw) {
+  const bar   = document.getElementById('pwBar');
+  const label = document.getElementById('pwLabel');
+  if (!bar) return;
+  let score = 0;
+  if (pw.length >= 6)  score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [
+    {w:'0%',   c:'transparent', t:''},
+    {w:'25%',  c:'#EF5350',     t:'Weak'},
+    {w:'50%',  c:'#FF9800',     t:'Fair'},
+    {w:'75%',  c:'#FDD835',     t:'Good'},
+    {w:'90%',  c:'#66BB6A',     t:'Strong'},
+    {w:'100%', c:'#2E7D32',     t:'Very Strong 💪'},
+  ];
+  const l = levels[Math.min(score, 5)];
+  bar.style.width = l.w;
+  bar.style.background = l.c;
+  label.textContent = l.t;
+  label.style.color = l.c;
+}
+
+// Avatar colour radio — live preview
+document.querySelectorAll('[name=avatar_color]').forEach(r => {
+  r.addEventListener('change', function() {
+    document.getElementById('avatarCircle').style.background = this.value;
+    // Update border on all swatches
+    document.querySelectorAll('[name=avatar_color]').forEach(rb => {
+      const swatch = rb.nextElementSibling;
+      if (swatch) {
+        swatch.style.border = rb.checked ? '3px solid #fff' : '3px solid transparent';
+      }
+    });
+  });
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,37 @@
+{
+  "name": "GreenField Smart Farming",
+  "short_name": "GreenField",
+  "description": "Smart Farm Management — track crops, weather, and analytics",
+  "id": "/dashboard",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#F0FAF0",
+  "theme_color": "#2E7D32",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    { "src": "/static/icons/icon-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-152.png", "sizes": "152x152", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-384.png", "sizes": "384x384", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "categories": ["productivity", "utilities", "agriculture"],
+  "screenshots": [],
+  "shortcuts": [
+    { "name": "Dashboard", "short_name": "Dashboard", "url": "/dashboard", "description": "View farm dashboard",
+      "icons": [{ "src": "/static/icons/icon-96.png", "sizes": "96x96" }] },
+    { "name": "My Farms",  "short_name": "Farms",     "url": "/farms",     "description": "Manage farms",
+      "icons": [{ "src": "/static/icons/icon-96.png", "sizes": "96x96" }] },
+    { "name": "Weather",   "short_name": "Weather",   "url": "/weather",   "description": "Check weather",
+      "icons": [{ "src": "/static/icons/icon-96.png", "sizes": "96x96" }] }
+  ]
+}

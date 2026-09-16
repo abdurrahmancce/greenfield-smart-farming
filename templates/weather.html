@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Weather{% endblock %}
+{% block page_title %}Weather{% endblock %}
+{% block page_sub %}
+  Live conditions for {{ weather.city }}{% if weather.country %}, {{ weather.country }}{% endif %} —
+  updated {{ weather.fetched_at }}
+{% endblock %}
+
+{% block content %}
+
+{# ── API error notice ─────────────────────────────────────────── #}
+{% if weather.get('api_error') %}
+<div class="flash error" style="margin-bottom:16px;pointer-events:all;position:relative">
+  <i class="fas fa-exclamation-triangle"></i>
+  <span>
+    <strong>Live API unavailable:</strong> {{ weather.api_error[:120] }}.
+    Showing mock data instead.
+    <a href="https://openweathermap.org/api" target="_blank" style="color:inherit;font-weight:700;text-decoration:underline">
+      Get a free API key →
+    </a>
+  </span>
+</div>
+{% endif %}
+
+{# ── City search ──────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:18px">
+  <div class="card-body" style="padding:13px 20px">
+    <form id="cityForm" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <i class="fas fa-search" style="color:var(--muted)"></i>
+      <input name="city" class="form-control" style="max-width:260px;margin:0"
+             placeholder="Search city…" value="{{ city }}"/>
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="fas fa-search"></i> Search
+      </button>
+
+      {# Source badge #}
+      {% if weather.source == 'live' %}
+      <span class="badge badge-live" style="font-size:12px;padding:5px 11px">
+        <i class="fas fa-wifi"></i> Live Data
+      </span>
+      {% else %}
+      <span class="badge badge-gray" style="font-size:12px;padding:5px 11px">
+        <i class="fas fa-database"></i> Mock Data
+      </span>
+      <span style="font-size:12px;color:var(--muted)">
+        — Set <code>OPENWEATHER_KEY</code> in <code>app.py</code> for live data.
+        <a href="https://openweathermap.org/api" target="_blank"
+           style="color:var(--p-light);font-weight:600">Free key →</a>
+      </span>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+{# ── Hero card ────────────────────────────────────────────────── #}
+<div class="weather-hero" style="margin-bottom:18px">
+  <i class="fas fa-{{ weather.icon }} weather-icon-big"></i>
+
+  <div class="weather-main">
+    <div class="weather-city">
+      <i class="fas fa-map-marker-alt"></i>
+      {{ weather.city }}{% if weather.country %}, {{ weather.country }}{% endif %}
+    </div>
+    <div class="weather-temp">{{ weather.temperature }}<sup>°C</sup></div>
+    <div class="weather-cond">{{ weather.condition }}</div>
+    <div style="font-size:13px;opacity:.7;margin-top:3px">{{ weather.description }}</div>
+    {# Farming tip #}
+    <div style="margin-top:12px;background:rgba(255,255,255,.12);border-radius:8px;padding:8px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px">
+      <i class="fas fa-leaf"></i> {{ weather.tip }}
+    </div>
+  </div>
+
+  <div class="weather-side">
+    <div>Feels like <strong>{{ weather.feels_like }}°C</strong></div>
+    <div>Min / Max <strong>{{ weather.temp_min }}° / {{ weather.temp_max }}°</strong></div>
+    <div>Pressure <strong>{{ weather.pressure }} hPa</strong></div>
+    <div>Visibility <strong>{{ weather.visibility }} km</strong></div>
+    <div>Clouds <strong>{{ weather.clouds }}%</strong></div>
+    <div style="margin-top:8px">
+      <i class="fas fa-sunrise" style="color:#FDD835"></i> {{ weather.sunrise }}
+      &nbsp;&nbsp;
+      <i class="fas fa-sunset" style="color:#FF8F00"></i> {{ weather.sunset }}
+    </div>
+  </div>
+</div>
+
+{# ── 6 stat cards ─────────────────────────────────────────────── #}
+<div class="weather-stats" style="margin-bottom:18px">
+  {% set cards = [
+    ('tint',            '#E1F5FE','#0277BD', weather.humidity|string + '%',          'Humidity'),
+    ('wind',            '#ECEFF1','#37474F', weather.wind_speed|string + ' km/h',    'Wind Speed'),
+    ('thermometer-half','#FCE4EC','#C2185B', weather.feels_like|string + '°C',       'Feels Like'),
+    ('eye',             '#EDE7F6','#4527A0', weather.visibility|string + ' km',      'Visibility'),
+    ('tachometer-alt',  '#FFF8E1','#E65100', weather.pressure|string + ' hPa',      'Pressure'),
+    ('cloud',           '#E0F2F1','#00695C', weather.clouds|string + '%',            'Cloud Cover'),
+  ] %}
+  {% for icon,bg,col,val,lbl in cards %}
+  <div class="ws-card">
+    <div class="ws-icon" style="background:{{ bg }};color:{{ col }}">
+      <i class="fas fa-{{ icon }}"></i>
+    </div>
+    <div><h4>{{ val }}</h4><p>{{ lbl }}</p></div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ── Farming advice ───────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:18px">
+  <div class="card-header">
+    <h2><i class="fas fa-leaf"></i> Farming Advice</h2>
+    {% if weather.source=='live' %}
+    <span class="badge badge-green"><i class="fas fa-check"></i> Based on live conditions</span>
+    {% else %}
+    <span class="badge badge-gray">Based on mock data</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="advice-grid">
+
+      <div class="advice-card">
+        <div class="ah"><i class="fas fa-tint" style="color:#0288D1"></i> Irrigation</div>
+        {% if weather.humidity >= 85 %}
+        <p>Very high humidity ({{ weather.humidity }}%) — suspend irrigation and improve field drainage to prevent root rot.</p>
+        {% elif weather.humidity >= 70 %}
+        <p>High humidity ({{ weather.humidity }}%) — reduce watering frequency. Monitor for fungal disease.</p>
+        {% elif weather.humidity >= 50 %}
+        <p>Moderate humidity — normal irrigation schedule is appropriate. Check soil moisture daily.</p>
+        {% else %}
+        <p>Low humidity ({{ weather.humidity }}%) — increase watering frequency, especially for rice and tomato.</p>
+        {% endif %}
+      </div>
+
+      <div class="advice-card">
+        <div class="ah"><i class="fas fa-wind" style="color:#78909C"></i> Wind & Spraying</div>
+        {% if weather.wind_speed >= 40 %}
+        <p>Strong winds ({{ weather.wind_speed }} km/h) — stop all spray operations. Secure tall crops like maize and jute.</p>
+        {% elif weather.wind_speed >= 20 %}
+        <p>Moderate wind ({{ weather.wind_speed }} km/h) — spray only early morning when wind is calm. Use low-drift nozzles.</p>
+        {% else %}
+        <p>Calm conditions ({{ weather.wind_speed }} km/h) — ideal for fertilizer or pesticide spraying operations.</p>
+        {% endif %}
+      </div>
+
+      <div class="advice-card">
+        <div class="ah"><i class="fas fa-thermometer-half" style="color:#C2185B"></i> Temperature</div>
+        {% if weather.temperature >= 38 %}
+        <p>Extreme heat ({{ weather.temperature }}°C) — avoid transplanting. Water at dawn and dusk only. Shade seedlings.</p>
+        {% elif weather.temperature >= 30 %}
+        <p>High temperature ({{ weather.temperature }}°C) — water before 8 AM and after 5 PM. Mulch around plants.</p>
+        {% elif weather.temperature >= 18 %}
+        <p>Optimal growing temperature ({{ weather.temperature }}°C) — great day for transplanting, harvesting and fieldwork.</p>
+        {% else %}
+        <p>Cool temperature ({{ weather.temperature }}°C) — protect seedlings from cold stress. Delay morning watering.</p>
+        {% endif %}
+      </div>
+
+      <div class="advice-card">
+        <div class="ah"><i class="fas fa-cloud" style="color:#78909C"></i> Cloud Cover</div>
+        {% if weather.clouds >= 80 %}
+        <p>Heavy cloud cover ({{ weather.clouds }}%) — expect reduced photosynthesis. Consider supplemental lighting for nurseries.</p>
+        {% elif weather.clouds >= 40 %}
+        <p>Partly cloudy ({{ weather.clouds }}%) — good diffused light for most crops. Watch for afternoon showers.</p>
+        {% else %}
+        <p>Clear sky ({{ weather.clouds }}%) — full sunlight available. Ideal for solar-powered irrigation systems.</p>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{# ── 7-day forecast ───────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <h2><i class="fas fa-calendar-week"></i> 7-Day Forecast</h2>
+    {% if weather.source=='live' %}
+    <span class="badge badge-live">Live</span>
+    {% else %}
+    <span class="badge badge-gray">Mock</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="forecast-grid">
+      {% for day in weather.forecast %}
+      <div class="forecast-day" title="{{ day.desc }}">
+        <div class="day">{{ day.day }}</div>
+        <i class="fas fa-{{ day.icon }}"></i>
+        <div class="temp">{{ day.temp }}°</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">{{ day.desc }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

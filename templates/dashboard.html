@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Welcome back! Here's what's happening on your farms today.{% endblock %}
+{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
+
+{% block content %}
+<!-- Stat Cards -->
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-tractor"></i></div><div class="stat-info"><h3>{{ total_farms }}</h3><p>Total Farms</p></div></div>
+  <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-seedling"></i></div><div class="stat-info"><h3>{{ total_crops }}</h3><p>Crop Varieties</p></div></div>
+  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-ruler-combined"></i></div><div class="stat-info"><h3>{{ total_area }} ac</h3><p>Total Area</p></div></div>
+  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-thermometer-half"></i></div><div class="stat-info"><h3>{{ weather.temperature }}°C</h3><p>{{ weather.city }} Temp</p></div></div>
+  <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-book-open"></i></div><div class="stat-info"><h3>{{ total_notes }}</h3><p>Farm Notes</p></div></div>
+</div>
+
+<div class="dash-grid">
+  <!-- Recent Farms -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-tractor"></i> Recent Farms</h2>
+      <a href="{{ url_for('farms') }}" class="btn btn-secondary btn-sm"><i class="fas fa-arrow-right"></i> All Farms</a>
+    </div>
+    {% if recent_farms %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Farm</th><th>Crop</th><th>Area</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for f in recent_farms %}
+          <tr>
+            <td><strong>{{ f.farm_name }}</strong><div style="font-size:11px;color:var(--muted)"><i class="fas fa-map-marker-alt"></i> {{ f.location }}</div></td>
+            <td><span class="badge badge-green"><i class="fas fa-{{ crop_icon(f.crop_type) }}"></i> {{ f.crop_type }}</span></td>
+            <td>{{ f.area }} ac</td>
+            <td><span class="badge {{ 'badge-green' if f.status=='Active' else 'badge-amber' if f.status=='Harvesting' else 'badge-blue' }}">{{ f.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><i class="fas fa-tractor"></i><h3>No farms yet</h3><p><a href="{{ url_for('farms') }}">Add your first farm</a></p></div>
+    {% endif %}
+  </div>
+
+  <!-- Right column -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <!-- Weather snapshot -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-cloud-sun"></i> Weather — {{ weather.city }}</h2>
+        <a href="{{ url_for('weather') }}" class="btn btn-secondary btn-sm">Full Report</a>
+      </div>
+      <div class="card-body" style="padding:16px 22px">
+        <div style="display:flex;align-items:center;gap:18px;margin-bottom:14px">
+          <i class="fas fa-{{ weather.icon }}" style="font-size:52px;color:var(--p-light)"></i>
+          <div>
+            <div style="font-size:40px;font-weight:900;color:var(--p);line-height:1">{{ weather.temperature }}°C</div>
+            <div style="font-size:13px;color:var(--muted)">{{ weather.condition }}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">
+          <div style="background:var(--bg);border-radius:9px;padding:10px">
+            <i class="fas fa-tint" style="color:#0288D1;display:block;margin-bottom:3px"></i>
+            <strong>{{ weather.humidity }}%</strong>
+            <div style="font-size:10px;color:var(--muted)">Humidity</div>
+          </div>
+          <div style="background:var(--bg);border-radius:9px;padding:10px">
+            <i class="fas fa-wind" style="color:#78909C;display:block;margin-bottom:3px"></i>
+            <strong>{{ weather.wind_speed }}</strong>
+            <div style="font-size:10px;color:var(--muted)">km/h Wind</div>
+          </div>
+          <div style="background:var(--bg);border-radius:9px;padding:10px">
+            <i class="fas fa-sun" style="color:var(--amber);display:block;margin-bottom:3px"></i>
+            <strong>{{ weather.uv_index }}</strong>
+            <div style="font-size:10px;color:var(--muted)">UV Index</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+      <div class="card-header"><h2><i class="fas fa-bolt"></i> Quick Actions</h2></div>
+      <div class="card-body">
+        <div class="quick-grid">
+          <a href="{{ url_for('farms') }}"    class="quick-btn"><i class="fas fa-plus-circle"></i>Add Farm</a>
+          <a href="{{ url_for('weather') }}"  class="quick-btn"><i class="fas fa-cloud-sun"></i>Weather</a>
+          <a href="{{ url_for('analytics') }}"class="quick-btn"><i class="fas fa-chart-bar"></i>Analytics</a>
+          <a href="{{ url_for('notes') }}"    class="quick-btn"><i class="fas fa-pen"></i>Add Note</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dash-grid">
+  <!-- Crop distribution -->
+  {% if crop_dist %}
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-chart-pie"></i> Crop Distribution</h2>
+      <a href="{{ url_for('analytics') }}" class="btn btn-secondary btn-sm">Full Charts</a>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap" style="height:200px">
+        <canvas id="chartMiniCrops"
+          data-labels='{{ crop_dist|map(attribute="crop_type")|list|tojson }}'
+          data-values='{{ crop_dist|map(attribute="cnt")|list|tojson }}'></canvas>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent Notes -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-sticky-note"></i> Recent Notes</h2>
+      <a href="{{ url_for('notes') }}" class="btn btn-secondary btn-sm">View All</a>
+    </div>
+    <div class="card-body" style="padding:6px 20px">
+      {% if recent_notes %}
+      {% for n in recent_notes %}
+      {% set cat = n.category|lower|replace(' ','') %}
+      <div class="note-item">
+        <div class="note-icon {{ cat }}"><i class="fas fa-{{ 'flask' if cat=='nutrition' else 'bug' if cat=='pestcontrol' else 'tint' if cat=='irrigation' else 'seedling' if cat=='growth' else 'seedling' }}"></i></div>
+        <div class="note-body">
+          <div class="note-title">{{ n.title }}</div>
+          <div class="note-text">{{ n.note[:80] }}{% if n.note|length>80 %}…{% endif %}</div>
+          <div class="note-meta">
+            <span><i class="fas fa-tractor"></i>{{ n.farm_name }}</span>
+            <span class="badge badge-{{ 'green' if cat in ['growth','harvest'] else 'blue' if cat=='irrigation' else 'amber' if cat=='nutrition' else 'red' if cat=='pestcontrol' else 'gray' }}">{{ n.category }}</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty"><i class="fas fa-book-open"></i><h3>No notes yet</h3><p><a href="{{ url_for('notes') }}">Add a note</a></p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Farm area bar chart -->
+{% if recent_farms %}
+<div class="card mt-20">
+  <div class="card-header">
+    <h2><i class="fas fa-chart-bar"></i> Farm Areas Overview</h2>
+    <a href="{{ url_for('analytics') }}" class="btn btn-secondary btn-sm">Full Analytics</a>
+  </div>
+  <div class="card-body">
+    <div class="chart-wrap" style="height:180px">
+      <canvas id="chartMiniArea"
+        data-labels='{{ recent_farms|map(attribute="farm_name")|list|tojson }}'
+        data-values='{{ recent_farms|map(attribute="area")|list|tojson }}'></canvas>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}Farm Management{% endblock %}
+{% block page_title %}Farm Management{% endblock %}
+{% block page_sub %}Add, edit, delete and monitor all your farms.{% endblock %}
+
+{% block content %}
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <div class="search-wrap">
+    <i class="fas fa-search"></i>
+    <input id="tableSearch" type="text" class="search-input" placeholder="Search farms…"/>
+  </div>
+  <button class="btn btn-primary" data-open="addFarmModal">
+    <i class="fas fa-plus"></i> Add New Farm
+  </button>
+</div>
+
+<!-- Farms Table -->
+<div class="card">
+  <div class="card-header">
+    <h2><i class="fas fa-tractor"></i> All Farms</h2>
+    <span class="badge badge-green">{{ farms|length }} registered</span>
+  </div>
+  {% if farms %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Farm Name</th><th>Crop</th><th>Location</th>
+          <th>Area</th><th>Planted</th><th>Status</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in farms %}
+        <tr data-searchable>
+          <td style="color:var(--muted);font-size:12px">{{ loop.index }}</td>
+          <td>
+            <strong>{{ f.farm_name }}</strong>
+            <div style="font-size:11px;color:var(--muted)">Added {{ f.created_at[:10] }}</div>
+          </td>
+          <td><span class="badge badge-green"><i class="fas fa-{{ crop_icon(f.crop_type) }}"></i> {{ f.crop_type }}</span></td>
+          <td><i class="fas fa-map-marker-alt" style="color:var(--p-light)"></i> {{ f.location }}</td>
+          <td>{{ f.area }} ac</td>
+          <td>{{ f.planting_date }}</td>
+          <td>
+            <span class="badge {{ 'badge-green' if f.status=='Active' else 'badge-amber' if f.status=='Harvesting' else 'badge-blue' if f.status=='Planted' else 'badge-gray' }}">
+              {{ f.status }}
+            </span>
+          </td>
+          <td>
+            <div class="td-actions">
+              <!-- EDIT: JS fetches /api/farm/id, fills modal, opens it -->
+              <button class="btn btn-secondary btn-sm btn-icon" title="Edit"
+                onclick="editFarm({{ f.id }})">
+                <i class="fas fa-edit"></i>
+              </button>
+              <!-- DELETE: JS confirms then submits hidden form -->
+              <button class="btn btn-danger btn-sm btn-icon" title="Delete"
+                onclick="deleteFarm({{ f.id }}, '{{ f.farm_name|replace("'","\\'") }}')">
+                <i class="fas fa-trash"></i>
+              </button>
+              <form id="del-farm-{{ f.id }}"
+                action="{{ url_for('delete_farm', fid=f.id) }}"
+                method="POST" style="display:none"></form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <i class="fas fa-tractor"></i>
+    <h3>No farms yet</h3>
+    <p>Click <strong>Add New Farm</strong> to get started.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Crop Monitor -->
+{% if farms %}
+<div class="card mt-20">
+  <div class="card-header">
+    <h2><i class="fas fa-seedling"></i> Crop Monitor</h2>
+    <span class="badge badge-teal">Live Status</span>
+  </div>
+  <div class="card-body">
+    <div class="crop-grid">
+      {% for f in farms %}
+      {% set gi = loop.index0 %}
+      {% set growth  = [42,68,81,55,90,35,74,60][gi % 8] %}
+      {% set water   = [58,72,47,84,63,79,51,66][gi % 8] %}
+      {% set soil    = [55,80,40,70,65,50,77,45][gi % 8] %}
+      {% set health  = ['Good','Good','Excellent','Fair','Good','Good','Fair','Excellent'][gi % 8] %}
+      {% set hclass  = {'Good':'badge-green','Fair':'badge-amber','Excellent':'badge-teal'} %}
+      <div class="crop-card">
+        <div class="crop-card-top">
+          <div>
+            <div class="crop-name">{{ f.farm_name }}</div>
+            <div class="crop-sub"><i class="fas fa-map-marker-alt"></i> {{ f.location }}</div>
+          </div>
+          <span class="badge {{ hclass[health] }}">{{ health }}</span>
+        </div>
+        <div class="crop-metric">
+          <div class="crop-metric-row">
+            <span class="label"><i class="fas fa-seedling"></i> Growth</span>
+            <span class="val">{{ growth }}%</span>
+          </div>
+          <div class="prog-wrap"><div class="prog prog-green" data-w="{{ growth }}%"></div></div>
+        </div>
+        <div class="crop-metric">
+          <div class="crop-metric-row">
+            <span class="label"><i class="fas fa-tint"></i> Water Level</span>
+            <span class="val">{{ water }}%</span>
+          </div>
+          <div class="prog-wrap"><div class="prog prog-blue" data-w="{{ water }}%"></div></div>
+        </div>
+        <div class="crop-metric">
+          <div class="crop-metric-row">
+            <span class="label"><i class="fas fa-layer-group"></i> Soil Moisture</span>
+            <span class="val">{{ soil }}%</span>
+          </div>
+          <div class="prog-wrap"><div class="prog prog-amber" data-w="{{ soil }}%"></div></div>
+        </div>
+        <div class="crop-footer">
+          <span class="badge badge-green"><i class="fas fa-{{ crop_icon(f.crop_type) }}"></i> {{ f.crop_type }}</span>
+          <span class="badge badge-gray"><i class="fas fa-ruler"></i> {{ f.area }} ac</span>
+          <span class="badge badge-blue"><i class="fas fa-calendar"></i> {{ f.planting_date }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══ GOOGLE MAPS FARM LOCATIONS ════════════════════════════ -->
+{% if farms %}
+<div class="card mt-20">
+  <div class="card-header">
+    <h2><i class="fas fa-map-marked-alt"></i> Farm Locations Map</h2>
+    <span class="badge badge-teal"><i class="fas fa-map-pin"></i> Live Locations</span>
+  </div>
+  <div class="card-body" style="padding:0">
+    <!-- Embedded map showing all farm locations -->
+    <div id="farmMap" style="width:100%;height:420px;border-radius:0 0 14px 14px;background:#E8F5E9;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+      <i class="fas fa-map-marked-alt" style="font-size:42px;color:var(--p-light)"></i>
+      <p style="color:var(--muted);font-size:14px;font-weight:600">Loading map…</p>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet.js — free, no API key needed -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Farm locations JSON for map -->
+<script>
+const FARM_LOCATIONS = {{ farms | map(attribute="location") | list | tojson }};
+const FARM_NAMES     = {{ farms | map(attribute="farm_name") | list | tojson }};
+const FARM_CROPS     = {{ farms | map(attribute="crop_type") | list | tojson }};
+</script>
+{% endif %}
+<!-- Irrigation Reminders -->
+<div class="card mt-20">
+  <div class="card-header">
+    <h2><i class="fas fa-tint"></i> Irrigation Reminders</h2>
+    <span class="badge badge-blue">Smart Schedule</span>
+  </div>
+  <div class="card-body">
+    <div class="irr-grid">
+      {% for f in farms %}
+      {% set cl = f.crop_type|lower %}
+      {% set req   = crop_water.get(cl, '25–30 mm/wk') %}
+      {% set days  = crop_interval.get(cl, 4) %}
+      <div class="irr-card {{ 'urgent' if days<=3 }}">
+        <h4><i class="fas fa-tractor" style="color:var(--p-light)"></i> {{ f.farm_name }}</h4>
+        <div class="irr-meta"><i class="fas fa-seedling"></i> {{ f.crop_type }} · {{ f.area }} ac</div>
+        <div class="irr-meta"><i class="fas fa-tint" style="color:#0288D1"></i> <strong>{{ req }}</strong></div>
+        <div class="irr-meta"><i class="fas fa-calendar-check"></i> Next: <strong>{{ days }} day{{ 's' if days!=1 }}</strong></div>
+        <div style="margin-top:10px">
+          <span class="badge {{ 'badge-amber' if days<=3 else 'badge-green' }}">
+            <i class="fas fa-{{ 'exclamation-triangle' if days<=3 else 'check' }}"></i>
+            {{ 'Due Soon' if days<=3 else 'On Schedule' }}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ═══ ADD FARM MODAL ════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="addFarmModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-plus-circle" style="color:var(--p-light)"></i> Add New Farm</h3>
+      <button class="btn-x" data-close="addFarmModal">&times;</button>
+    </div>
+    <form action="{{ url_for('add_farm') }}" method="POST">
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Farm Name *</label>
+            <input type="text" name="farm_name" class="form-control" placeholder="e.g. Green Valley Farm" required/>
+          </div>
+          <div class="form-group">
+            <label>Crop Type *</label>
+            <select name="crop_type" class="form-control" required>
+              <option value="">— Select Crop —</option>
+              <option>Rice</option><option>Wheat</option><option>Maize</option>
+              <option>Tomato</option><option>Potato</option><option>Jute</option>
+              <option>Mustard</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Location *</label>
+            <input type="text" name="location" class="form-control" placeholder="e.g. Chittagong" required/>
+          </div>
+          <div class="form-group">
+            <label>Area (acres) *</label>
+            <input type="number" name="area" class="form-control" placeholder="e.g. 5.5" step="0.1" min="0.1" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Planting Date *</label>
+            <input type="date" name="planting_date" class="form-control" required/>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status" class="form-control">
+              <option value="Active">Active</option>
+              <option value="Planted">Planted</option>
+              <option value="Harvesting">Harvesting</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="addFarmModal">Cancel</button>
+        <button type="submit"  class="btn btn-primary"><i class="fas fa-plus"></i> Add Farm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ EDIT FARM MODAL (action set by editFarm() JS) ════════ -->
+<div class="modal-overlay hidden" id="editFarmModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-edit" style="color:var(--p-light)"></i> Edit Farm</h3>
+      <button class="btn-x" data-close="editFarmModal">&times;</button>
+    </div>
+    <form action="#" method="POST">
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Farm Name *</label>
+            <input type="text" name="farm_name" class="form-control" required/>
+          </div>
+          <div class="form-group">
+            <label>Crop Type *</label>
+            <select name="crop_type" class="form-control" required>
+              <option value="">— Select Crop —</option>
+              <option>Rice</option><option>Wheat</option><option>Maize</option>
+              <option>Tomato</option><option>Potato</option><option>Jute</option>
+              <option>Mustard</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Location *</label>
+            <input type="text" name="location" class="form-control" required/>
+          </div>
+          <div class="form-group">
+            <label>Area (acres) *</label>
+            <input type="number" name="area" class="form-control" step="0.1" min="0.1" required/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Planting Date *</label>
+            <input type="date" name="planting_date" class="form-control" required/>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status" class="form-control">
+              <option value="Active">Active</option>
+              <option value="Planted">Planted</option>
+              <option value="Harvesting">Harvesting</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="editFarmModal">Cancel</button>
+        <button type="submit"  class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── Real Farm Map — Leaflet.js + OpenStreetMap Nominatim (free, no key) ── */
+async function geocodeCity(city) {
+  const cacheKey = 'geo_' + city.toLowerCase().trim();
+  const cached = sessionStorage.getItem(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=bd&q=${encodeURIComponent(city)}`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await res.json();
+    if (data && data.length > 0) {
+      const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      sessionStorage.setItem(cacheKey, JSON.stringify(coords));
+      return coords;
+    }
+  } catch (err) {
+    console.warn('Geocoding failed for', city, err);
+  }
+  return null; // Location not found — skip this marker
+}
+
+async function initFarmMap() {
+  if (typeof FARM_LOCATIONS === 'undefined' || FARM_LOCATIONS.length === 0) return;
+  const mapEl = document.getElementById('farmMap');
+  if (!mapEl || typeof L === 'undefined') return;
+
+  mapEl.innerHTML = ''; // clear loading spinner
+  mapEl.style.background = 'transparent';
+
+  // Default view centred on Bangladesh — will auto-fit once markers load
+  const map = L.map(mapEl).setView([23.6850, 90.3563], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 18
+  }).addTo(map);
+
+  const bounds = [];
+  const seen   = {}; // avoid re-geocoding duplicate city names
+
+  for (let i = 0; i < FARM_LOCATIONS.length; i++) {
+    const city = (FARM_LOCATIONS[i] || '').trim();
+    if (!city) continue;
+
+    const key = city.toLowerCase();
+    let coords = seen[key];
+    if (!coords) {
+      coords = await geocodeCity(city);
+      seen[key] = coords;
+      // Nominatim usage policy: max 1 request/sec — small delay between calls
+      await new Promise(r => setTimeout(r, 350));
+    }
+    if (!coords) continue; // couldn't find this location — skip silently
+
+    const marker = L.marker([coords.lat, coords.lng]).addTo(map);
+    marker.bindPopup(`
+      <div style="font-family:Poppins,sans-serif;min-width:150px">
+        <strong style="color:#1B5E20">🌾 ${FARM_NAMES[i]}</strong><br/>
+        <span style="color:#666">Crop: ${FARM_CROPS[i]}</span><br/>
+        <span style="color:#666">📍 ${city}</span>
+      </div>
+    `);
+    bounds.push([coords.lat, coords.lng]);
+  }
+
+  if (bounds.length > 0) {
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+  } else {
+    mapEl.innerHTML = `
+      <div style="padding:60px 20px;text-align:center;color:var(--muted)">
+        <i class="fas fa-map-marker-alt" style="font-size:36px;color:var(--border);display:block;margin-bottom:10px"></i>
+        Could not locate the farm addresses on the map.<br/>
+        Try using a recognisable city or district name.
+      </div>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initFarmMap);
+</script>
+{% endblock %}

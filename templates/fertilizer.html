@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Fertilizer Calculator{% endblock %}
+{% block page_title %}Fertilizer Calculator{% endblock %}
+{% block page_sub %}Calculate N-P-K requirements. Results are saved and editable.{% endblock %}
+
+{% block content %}
+<div class="fert-grid" style="display:grid;grid-template-columns:1fr 1.6fr;gap:20px;align-items:start">
+
+  <!-- LEFT: Calculator form -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-flask"></i> Calculate</h2>
+        <span class="badge badge-blue">N · P · K</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted fs-12" style="margin-bottom:16px">
+          Enter crop type and area — result saves automatically to your history.
+        </p>
+        <form id="fertForm">
+          <div class="form-group">
+            <label>Crop Type *</label>
+            <select name="crop_type" id="fertCrop" class="form-control" required>
+              <option value="">— Select crop —</option>
+              <option value="rice">🌾 Rice</option>
+              <option value="wheat">🌿 Wheat</option>
+              <option value="maize">🌽 Maize</option>
+              <option value="tomato">🍅 Tomato</option>
+              <option value="potato">🥔 Potato</option>
+              <option value="jute">🪴 Jute</option>
+              <option value="mustard">🌻 Mustard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Farm Area (acres) *</label>
+            <input type="number" name="area" id="fertArea" class="form-control"
+                   placeholder="e.g. 3.5" step="0.1" min="0.1" required/>
+          </div>
+          <div class="form-group">
+            <label>Label / Note (optional)</label>
+            <input type="text" name="label" id="fertLabel" class="form-control"
+                   placeholder="e.g. North Field, Season 2024"/>
+          </div>
+          <button type="submit" class="btn btn-primary w-full" id="calcBtn">
+            <i class="fas fa-calculator"></i> Calculate & Save
+          </button>
+        </form>
+
+        <!-- Live result -->
+        <div id="calcResult"></div>
+      </div>
+    </div>
+
+    <!-- NPK Reference Card -->
+    <div class="card mt-20">
+      <div class="card-header"><h2><i class="fas fa-book"></i> NPK Reference</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Crop</th><th>N</th><th>P</th><th>K</th></tr></thead>
+          <tbody>
+            {% for row in [
+              ('Rice','60','30','20'), ('Wheat','80','40','30'),
+              ('Maize','100','50','40'), ('Tomato','120','60','80'),
+              ('Potato','90','70','100'), ('Jute','50','20','15'),
+              ('Mustard','40','20','15')
+            ] %}
+            <tr>
+              <td><strong>{{ row[0] }}</strong></td>
+              <td><span class="badge badge-green">{{ row[1] }}</span></td>
+              <td><span class="badge badge-blue">{{ row[2] }}</span></td>
+              <td><span class="badge badge-amber">{{ row[3] }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:10px 16px;font-size:11px;color:var(--muted)">
+        Values in kg/acre. Adjust based on soil test results.
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Saved history -->
+  <div>
+    <div class="toolbar">
+      <div class="search-wrap" style="flex:1">
+        <i class="fas fa-search"></i>
+        <input id="tableSearch" type="text" class="search-input" placeholder="Search history…"/>
+      </div>
+      <span class="badge badge-green">{{ history|length }} saved</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-history"></i> Saved Calculations</h2>
+        <span class="badge badge-teal">Auto-saved on calculate</span>
+      </div>
+
+      {% if history %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Crop</th><th>Area</th><th>N</th><th>P</th><th>K</th>
+              <th>Total</th><th>Label</th><th>Date</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="historyTable">
+            {% for h in history %}
+            <tr data-searchable>
+              <td><span class="badge badge-green"><i class="fas fa-leaf"></i> {{ h.crop_type|capitalize }}</span></td>
+              <td>{{ h.area }} ac</td>
+              <td><strong style="color:#2E7D32">{{ h.n_kg }}</strong></td>
+              <td><strong style="color:#0277BD">{{ h.p_kg }}</strong></td>
+              <td><strong style="color:#E65100">{{ h.k_kg }}</strong></td>
+              <td><strong>{{ h.total_kg }} kg</strong></td>
+              <td style="font-size:12px;color:var(--muted)">{{ h.label or '—' }}</td>
+              <td style="font-size:11px;color:var(--muted)">{{ h.created_at[:10] }}</td>
+              <td>
+                <div class="td-actions">
+                  <button class="btn btn-secondary btn-sm btn-icon" title="Edit"
+                    onclick="editCalc({{ h.id }})">
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <form id="del-fert-{{ h.id }}"
+                    action="{{ url_for('delete_fertilizer', rid=h.id) }}"
+                    method="POST" style="display:none"></form>
+                  <button class="btn btn-danger btn-sm btn-icon" title="Delete"
+                    onclick="if(confirm('Delete this record?')) document.getElementById('del-fert-{{ h.id }}').submit()">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        <i class="fas fa-flask"></i>
+        <h3>No calculations yet</h3>
+        <p>Use the calculator on the left — results save here automatically.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ═══ EDIT MODAL ═══════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="editFertModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fas fa-edit" style="color:var(--p-light)"></i> Edit Calculation</h3>
+      <button class="btn-x" data-close="editFertModal">&times;</button>
+    </div>
+    <form action="#" method="POST">
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Crop Type *</label>
+            <select name="crop_type" class="form-control" required>
+              <option value="rice">Rice</option>
+              <option value="wheat">Wheat</option>
+              <option value="maize">Maize</option>
+              <option value="tomato">Tomato</option>
+              <option value="potato">Potato</option>
+              <option value="jute">Jute</option>
+              <option value="mustard">Mustard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Area (acres) *</label>
+            <input type="number" name="area" class="form-control" step="0.1" min="0.1" required/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Label / Note</label>
+          <input type="text" name="label" class="form-control" placeholder="e.g. North Field"/>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="editFertModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* ── Calculator → save via API ───────────────────────────── */
+document.getElementById('fertForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const crop  = document.getElementById('fertCrop').value;
+  const area  = parseFloat(document.getElementById('fertArea').value);
+  const label = document.getElementById('fertLabel').value;
+  const out   = document.getElementById('calcResult');
+  const btn   = document.getElementById('calcBtn');
+
+  if (!crop || isNaN(area) || area <= 0) {
+    out.innerHTML = `<div class="flash error mt-16"><i class="fas fa-exclamation-circle"></i><span>Please select a crop and enter a valid area.</span></div>`;
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calculating…';
+
+  try {
+    const res = await fetch('/fertilizer/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({crop_type: crop, area: area, label: label})
+    });
+    const d = await res.json();
+
+    out.innerHTML = `
+      <div class="card mt-20" style="border-top:3px solid var(--p-light)">
+        <div class="card-header">
+          <h2><i class="fas fa-check-circle" style="color:#10B981"></i>
+            Saved — ${crop.charAt(0).toUpperCase()+crop.slice(1)} · ${area} acres</h2>
+          <span class="badge badge-green"><i class="fas fa-save"></i> Auto-saved</span>
+        </div>
+        <div class="card-body">
+          <div class="npk-grid">
+            <div class="npk-card" style="--npk-color:#2E7D32">
+              <div class="val">${d.N}</div><div class="lbl">Nitrogen (N)</div><div class="sub">kg total</div>
+            </div>
+            <div class="npk-card" style="--npk-color:#0277BD">
+              <div class="val">${d.P}</div><div class="lbl">Phosphorus (P)</div><div class="sub">kg total</div>
+            </div>
+            <div class="npk-card" style="--npk-color:#E65100">
+              <div class="val">${d.K}</div><div class="lbl">Potassium (K)</div><div class="sub">kg total</div>
+            </div>
+            <div class="npk-card" style="--npk-color:#6A1B9A">
+              <div class="val">${d.urea}</div><div class="lbl">Urea Equiv.</div><div class="sub">kg total</div>
+            </div>
+            <div class="npk-card" style="--npk-color:#00695C;grid-column:span 2">
+              <div class="val">${d.total} kg</div><div class="lbl">Total Fertilizer</div>
+              <div class="sub">N+P+K across ${area} acre${area!==1?'s':''}</div>
+            </div>
+          </div>
+          <p class="text-muted fs-12 mt-16" style="text-align:center">
+            <i class="fas fa-history"></i> This result is saved in your history below.
+            <a href="/fertilizer" style="color:var(--p-light);font-weight:700">Refresh to see it →</a>
+          </p>
+        </div>
+      </div>`;
+
+    // Auto-reload after 2s to show in table
+    setTimeout(() => location.reload(), 2200);
+
+  } catch(err) {
+    out.innerHTML = `<div class="flash error mt-16"><i class="fas fa-exclamation-circle"></i><span>Save failed — please try again.</span></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-calculator"></i> Calculate & Save';
+  }
+});
+
+/* ── Edit record ─────────────────────────────────────────── */
+async function editCalc(id) {
+  try {
+    const res = await fetch(`/api/fertilizer/record/${id}`);
+    const d   = await res.json();
+    const m   = document.getElementById('editFertModal');
+    m.querySelector('[name=crop_type]').value = d.crop_type || 'rice';
+    m.querySelector('[name=area]').value      = d.area      || '';
+    m.querySelector('[name=label]').value     = d.label     || '';
+    m.querySelector('form').action = `/fertilizer/edit/${id}`;
+    openModal('editFertModal');
+  } catch(e) {
+    alert('Could not load record.');
+  }
+}
+</script>
+{% endblock %}
