@@ -187,7 +187,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
 .sidebar-overlay.visible{display:block}
 
 /* ── Main wrapper ────────────────────────────── */
-.main-wrap{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+.main-wrap{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;max-width:100%;overflow-x:hidden}
 
 /* ── Topbar ──────────────────────────────────── */
 .topbar{
@@ -219,7 +219,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
   pointer-events:auto;position:relative;z-index:250;
 }
 .hamburger i{pointer-events:none}
-.page{padding:26px 28px;flex:1}
+.page{padding:26px 28px;flex:1;max-width:100%;overflow-x:hidden}
 
 /* ═══════════════════════════════════════════════
    FLASH MESSAGES
@@ -255,6 +255,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
   border-radius:var(--r);
   box-shadow:var(--shadow);
   overflow:hidden;
+  max-width:100%;
   transition:box-shadow var(--t);
 }
 .card-header{
@@ -308,7 +309,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
 /* ═══════════════════════════════════════════════
    TABLES
 ═══════════════════════════════════════════════ */
-.table-wrap{overflow-x:auto}
+.table-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 thead th{
   background:#F0FAF0;color:var(--p);
@@ -728,7 +729,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 @media(max-width:1024px){.chart-grid{grid-template-columns:1fr}.dash-grid{grid-template-columns:1fr}}
 @media(max-width:768px){
   .sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}
-  .main-wrap{margin-left:0}
+  .main-wrap{margin-left:0;max-width:100vw;overflow-x:hidden}
   .hamburger{display:flex;align-items:center;justify-content:center;
     width:38px;height:38px;flex-shrink:0;order:99;
     background:var(--bg);border:1.5px solid var(--border);border-radius:10px}

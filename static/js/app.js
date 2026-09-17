@@ -305,11 +305,13 @@ function initCharts() {
 
   function donut(id) {
     const d = data(id); if (!d) return;
+    const isMobile = window.innerWidth <= 640;
     new Chart(document.getElementById(id), {
       type:"doughnut",
       data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:COLORS.slice(0,d.values.length),borderWidth:2,borderColor:"#fff",hoverOffset:8}]},
       options:{responsive:true,maintainAspectRatio:false,cutout:"68%",
-        plugins:{legend:{display:true,position:"right",labels:{padding:14,font:{size:12},usePointStyle:true}}}}
+        plugins:{legend:{display:true,position: isMobile ? "bottom" : "right",
+          labels:{padding:isMobile?10:14,font:{size:isMobile?11:12},usePointStyle:true,boxWidth:10}}}}
     });
   }
 
