@@ -521,6 +521,6 @@ SOFTWARE.
 
 Made with ❤️ and 🌱 by [Abdur Rahman](https://github.com/abdur-rahman-akash26)
 
-*Built for CSE Portfolio @ IIUC · 2024*
+*Built for real life · 2024*
 
 </div>
