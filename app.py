@@ -50,12 +50,25 @@ else:
 #  DATABASE — dual backend (SQLite local / PostgreSQL production)
 # ══════════════════════════════════════════════════════════════════
 class _DictRow(dict):
-    """Makes psycopg2 rows behave like sqlite3.Row (both dict-style and attr access)."""
+    """Makes psycopg2 rows behave like sqlite3.Row: supports both
+    dict-style access (row['col']), attribute access (row.col), AND
+    positional integer access (row[0]) — the same as sqlite3.Row.
+    RealDictCursor only gives plain dicts (string keys only), so
+    without this override any `row[0]` in the codebase (e.g. reading
+    a bare COUNT(*) result) raises KeyError: 0 on PostgreSQL."""
     def __getattr__(self, key):
         try:
             return self[key]
         except KeyError:
             raise AttributeError(key)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            # Python dicts preserve insertion order (3.7+), and
+            # RealDictCursor preserves column order, so this matches
+            # sqlite3.Row's positional indexing behaviour.
+            return list(self.values())[key]
+        return super().__getitem__(key)
 
 class PGConnWrapper:
     """Wraps a psycopg2 connection so the rest of the app can call
