@@ -254,7 +254,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
   border:1px solid var(--border);
   border-radius:var(--r);
   box-shadow:var(--shadow);
-  overflow:hidden;
+  overflow:visible;
   max-width:100%;
   transition:box-shadow var(--t);
 }
@@ -263,6 +263,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;gap:12px;
   background:linear-gradient(90deg,rgba(232,245,233,.7),transparent);
+  border-radius:var(--r) var(--r) 0 0;
 }
 .card-header h2{
   font-size:14.5px;font-weight:700;color:var(--p);
@@ -309,7 +310,15 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
 /* ═══════════════════════════════════════════════
    TABLES
 ═══════════════════════════════════════════════ */
-.table-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.table-wrap{
+  display:block;
+  width:100%;
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  border-radius:0 0 var(--r) var(--r);
+}
+.table-wrap table{min-width:600px}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 thead th{
   background:#F0FAF0;color:var(--p);
