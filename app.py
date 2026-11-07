@@ -1039,6 +1039,98 @@ def api_fertilizer():
     d=request.get_json(force=True) or {}
     return jsonify(calc_fertilizer(d.get("crop_type","rice"),float(d.get("area",1))))
 
+# ── Disease Detection ─────────────────────────────────────────────
+DISEASE_DB = {
+    "rice": [
+        {"name":"Rice Blast","symptoms":["brown spots","gray center","diamond shaped lesion","white lesion","blast"],"severity":"High","treatment":"Apply Tricyclazole or Carbendazim fungicide. Remove infected leaves. Ensure proper spacing.","prevention":"Use resistant varieties. Avoid excess nitrogen. Maintain proper water level.","emoji":"🍚"},
+        {"name":"Brown Spot","symptoms":["brown circular spots","yellow halo","dark brown","circular brown","brown spot"],"severity":"Medium","treatment":"Apply Mancozeb or Iprobenfos. Improve soil nutrition with potassium.","prevention":"Use certified seeds. Balanced fertilization. Proper water management.","emoji":"🟤"},
+        {"name":"Bacterial Leaf Blight","symptoms":["water soaked","yellow stripe","wilting","yellow edge","leaf edge yellow","blight"],"severity":"High","treatment":"No effective chemical. Remove infected plants. Use copper-based bactericide.","prevention":"Use resistant varieties. Avoid flood irrigation. Balanced nitrogen.","emoji":"⚡"},
+        {"name":"Sheath Blight","symptoms":["oval lesion","water soaked sheath","white center sheath","gray lesion sheath","sheath"],"severity":"Medium","treatment":"Apply Hexaconazole or Validamycin. Reduce plant density.","prevention":"Avoid dense planting. Reduce nitrogen. Drain fields periodically.","emoji":"🌾"},
+    ],
+    "wheat": [
+        {"name":"Wheat Rust","symptoms":["rust colored pustules","orange powder","rust","pustules","orange spots"],"severity":"High","treatment":"Apply Propiconazole or Tebuconazole fungicide immediately.","prevention":"Use rust-resistant varieties. Early planting. Remove volunteer plants.","emoji":"🟠"},
+        {"name":"Powdery Mildew","symptoms":["white powder","powdery coating","white fungus","powdery","white coat"],"severity":"Medium","treatment":"Apply sulfur-based fungicide or Triadimefon.","prevention":"Avoid dense planting. Reduce humidity. Use resistant varieties.","emoji":"⬜"},
+        {"name":"Loose Smut","symptoms":["black powder","smut","black dust","black spores","dark powder"],"severity":"High","treatment":"Use carboxin or thiram seed treatment.","prevention":"Plant certified disease-free seeds. Hot water seed treatment.","emoji":"⬛"},
+    ],
+    "tomato": [
+        {"name":"Early Blight","symptoms":["dark spots","concentric rings","target spot","brown lesion","early blight"],"severity":"Medium","treatment":"Apply Chlorothalonil or Mancozeb. Remove infected lower leaves.","prevention":"Crop rotation. Mulching. Avoid overhead irrigation.","emoji":"🍅"},
+        {"name":"Late Blight","symptoms":["water soaked","dark brown","white mold underside","late blight","greasy spots"],"severity":"High","treatment":"Apply Metalaxyl or Cymoxanil immediately. Destroy infected plants.","prevention":"Avoid overhead watering. Good air circulation. Use resistant varieties.","emoji":"💧"},
+        {"name":"Leaf Curl","symptoms":["curling leaves","leaf curl","upward curl","twisted leaves","curled"],"severity":"Medium","treatment":"Control whitefly vectors with imidacloprid. Remove infected plants.","prevention":"Use virus-free seedlings. Control insect vectors. Reflective mulch.","emoji":"🌀"},
+        {"name":"Fusarium Wilt","symptoms":["wilting","yellowing","brown stem","vascular discoloration","wilt"],"severity":"High","treatment":"No chemical cure. Remove infected plants. Soil solarization.","prevention":"Use resistant varieties. Crop rotation. Sterilize tools.","emoji":"🥀"},
+    ],
+    "potato": [
+        {"name":"Late Blight","symptoms":["water soaked","dark lesion","white mold","brown patch","late blight"],"severity":"High","treatment":"Apply Metalaxyl or Mancozeb. Destroy infected tubers.","prevention":"Use certified seed potato. Avoid overhead irrigation. Good drainage.","emoji":"🥔"},
+        {"name":"Early Blight","symptoms":["dark brown spots","concentric rings","yellow halo","angular spots","early blight"],"severity":"Medium","treatment":"Apply Chlorothalonil or Iprodione fungicide.","prevention":"Crop rotation. Remove plant debris. Balanced fertilization.","emoji":"🟫"},
+        {"name":"Blackleg","symptoms":["black stem base","soft rot","wilting","black leg","stem rot"],"severity":"High","treatment":"No effective treatment. Remove and destroy infected plants.","prevention":"Use certified seed. Good drainage. Avoid injuring stems.","emoji":"🖤"},
+    ],
+    "maize": [
+        {"name":"Northern Corn Leaf Blight","symptoms":["long gray lesion","cigar shaped","long lesion","gray streak","leaf blight"],"severity":"Medium","treatment":"Apply Propiconazole. Remove infected debris after harvest.","prevention":"Use resistant hybrids. Crop rotation. Proper spacing.","emoji":"🌽"},
+        {"name":"Common Rust","symptoms":["rust","orange pustules","brick red","rust colored","powdery orange"],"severity":"Medium","treatment":"Apply Mancozeb or Trifloxystrobin fungicide.","prevention":"Use resistant varieties. Early planting. Proper plant nutrition.","emoji":"🟤"},
+        {"name":"Stalk Rot","symptoms":["stalk rot","soft stalk","lodging","stalk discoloration","stem rot"],"severity":"High","treatment":"No effective chemical. Harvest early to prevent loss.","prevention":"Balanced fertilization. Avoid stress. Control insects.","emoji":"🌿"},
+    ],
+    "general": [
+        {"name":"Nutrient Deficiency","symptoms":["yellowing","pale leaves","yellow","chlorosis","light green","pale"],"severity":"Low","treatment":"Apply balanced NPK fertilizer. Soil test to identify specific deficiency.","prevention":"Regular soil testing. Balanced fertilization. Proper pH management.","emoji":"🌱"},
+        {"name":"Overwatering / Root Rot","symptoms":["wilting","yellow","soggy soil","root rot","overwater","drooping"],"severity":"Medium","treatment":"Reduce watering. Improve drainage. Apply fungicide to roots.","prevention":"Well-draining soil. Avoid waterlogging. Monitor soil moisture.","emoji":"💧"},
+        {"name":"Fungal Infection","symptoms":["mold","fungus","white growth","black growth","fuzzy","spores"],"severity":"Medium","treatment":"Apply broad-spectrum fungicide (Mancozeb or Copper oxychloride).","prevention":"Good air circulation. Avoid overhead irrigation. Remove debris.","emoji":"🍄"},
+    ],
+}
+
+def detect_disease(crop_type, symptoms_text, additional_info=""):
+    text = (symptoms_text + " " + additional_info).lower()
+    crop = crop_type.lower()
+    candidates = DISEASE_DB.get(crop, []) + DISEASE_DB["general"]
+    matches = []
+    for disease in candidates:
+        score = 0
+        matched_symptoms = []
+        for symptom in disease["symptoms"]:
+            if any(word in text for word in symptom.split()):
+                score += 1
+                matched_symptoms.append(symptom)
+        if score > 0:
+            matches.append({**disease, "score": score, "matched": matched_symptoms})
+    matches.sort(key=lambda x: x["score"], reverse=True)
+    if not matches:
+        return {"detected": False, "message": "No specific disease matched. Try describing symptoms in more detail."}
+    top = matches[0]
+    confidence = min(int((top["score"] / max(len(top["symptoms"]), 1)) * 100), 95)
+    return {
+        "detected": True,
+        "disease": top["name"],
+        "severity": top["severity"],
+        "confidence": confidence,
+        "emoji": top["emoji"],
+        "treatment": top["treatment"],
+        "prevention": top["prevention"],
+        "matched_symptoms": top["matched"],
+        "other_possible": [m["name"] for m in matches[1:3]] if len(matches) > 1 else []
+    }
+
+@app.route("/disease", methods=["GET"])
+@login_required
+def disease_page():
+    farms = []
+    try:
+        conn = get_db(); cur = conn.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
+        cur.execute(f"SELECT id, name, crop_type FROM farms WHERE user_id={ph} ORDER BY name", (session["user_id"],))
+        farms = cur.fetchall(); conn.close()
+    except Exception:
+        pass
+    return render_template("disease.html", farms=farms)
+
+@app.route("/api/disease-detect", methods=["POST"])
+@login_required
+def api_disease_detect():
+    d = request.get_json(force=True) or {}
+    crop_type = d.get("crop_type", "general")
+    symptoms = d.get("symptoms", "")
+    additional = d.get("additional_info", "")
+    if not symptoms.strip():
+        return jsonify({"error": "Please describe the symptoms"}), 400
+    result = detect_disease(crop_type, symptoms, additional)
+    return jsonify(result)
+
 # ── Entry ─────────────────────────────────────────────────────────
 # Always init DB (works for both gunicorn and dev server)
 init_db()
