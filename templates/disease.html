@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Crop Disease Detection{% endblock %}
+{% block page_title %}Crop Disease Detection{% endblock %}
+{% block page_sub %}Describe symptoms to identify diseases and get treatment advice.{% endblock %}
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:20px;align-items:start">
+  <div>
+    <div class="card">
+      <div class="card-header"><h2><i class="fas fa-microscope"></i> Symptom Checker</h2><span class="badge badge-green">AI Diagnosis</span></div>
+      <div class="card-body">
+        <p class="text-muted fs-12" style="margin-bottom:16px">Describe what you see on the plant — leaves, stem, fruit or roots.</p>
+        <form id="diseaseForm">
+          <div class="form-group"><label>Crop Type *</label>
+            <select id="cropType" class="form-control" required>
+              <option value="">— Select crop —</option>
+              <option value="rice">🌾 Rice</option><option value="wheat">🌿 Wheat</option>
+              <option value="maize">🌽 Maize</option><option value="tomato">🍅 Tomato</option>
+              <option value="potato">🥔 Potato</option><option value="general">🌱 Other / General</option>
+            </select>
+          </div>
+          {% if farms %}<div class="form-group"><label>Link to Farm <span class="text-muted">(optional)</span></label>
+            <select id="farmLink" class="form-control"><option value="">— None —</option>
+              {% for f in farms %}<option value="{{ f[0] }}" data-crop="{{ f[2] }}">{{ f[1] }} ({{ f[2] }})</option>{% endfor %}
+            </select></div>{% endif %}
+          <div class="form-group"><label>Describe Symptoms *</label>
+            <textarea id="symptoms" class="form-control" rows="5" placeholder="e.g. Brown spots with yellow halo on lower leaves..." required></textarea>
+            <small class="text-muted">Be specific: color, shape, location on plant</small></div>
+          <div class="form-group"><label>Additional Info <span class="text-muted">(optional)</span></label>
+            <textarea id="additionalInfo" class="form-control" rows="2" placeholder="e.g. After heavy rain, plants 3 weeks old..."></textarea></div>
+          <button type="submit" class="btn btn-primary" id="detectBtn" style="width:100%"><i class="fas fa-search"></i> Detect Disease</button>
+        </form>
+        <div style="margin-top:16px">
+          <p class="text-muted fs-12" style="margin-bottom:8px"><i class="fas fa-bolt"></i> Quick symptoms:</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <span class="chip" onclick="addSymptom('brown spots')">Brown spots</span>
+            <span class="chip" onclick="addSymptom('yellow leaves')">Yellow leaves</span>
+            <span class="chip" onclick="addSymptom('white powder')">White powder</span>
+            <span class="chip" onclick="addSymptom('wilting')">Wilting</span>
+            <span class="chip" onclick="addSymptom('rust colored pustules')">Rust pustules</span>
+            <span class="chip" onclick="addSymptom('water soaked lesion')">Water-soaked</span>
+            <span class="chip" onclick="addSymptom('curling leaves')">Leaf curl</span>
+            <span class="chip" onclick="addSymptom('black spots')">Black spots</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><h2><i class="fas fa-lightbulb"></i> Detection Tips</h2></div>
+      <div class="card-body">
+        <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px">
+          <li style="display:flex;gap:10px"><span>🔍</span><span class="fs-13">Check both upper and lower leaf surfaces</span></li>
+          <li style="display:flex;gap:10px"><span>📏</span><span class="fs-13">Note size, shape and color of lesions</span></li>
+          <li style="display:flex;gap:10px"><span>🌧️</span><span class="fs-13">Recent weather helps narrow diagnosis</span></li>
+          <li style="display:flex;gap:10px"><span>📍</span><span class="fs-13">Note where symptoms started on the plant</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div id="resultsPanel">
+    <div class="card" id="emptyState">
+      <div class="card-body" style="text-align:center;padding:60px 24px">
+        <div style="font-size:64px;margin-bottom:16px">🌿</div>
+        <h3 style="color:var(--text-secondary);font-weight:500">No diagnosis yet</h3>
+        <p class="text-muted fs-13" style="margin-top:8px">Describe symptoms and click <strong>Detect Disease</strong>.</p>
+      </div>
+    </div>
+    <div class="card" id="loadingState" style="display:none">
+      <div class="card-body" style="text-align:center;padding:60px 24px">
+        <div style="font-size:48px;margin-bottom:16px;animation:spin 1s linear infinite;display:inline-block">🔬</div>
+        <h3 style="color:var(--text-secondary)">Analyzing symptoms...</h3>
+      </div>
+    </div>
+    <div id="resultCard" style="display:none">
+      <div class="card" id="diagnosisCard">
+        <div class="card-header" id="diagnosisHeader"><h2 id="diseaseTitle"></h2><span class="badge" id="severityBadge"></span></div>
+        <div class="card-body">
+          <div style="margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span class="fs-13 text-muted">Confidence</span><span class="fs-13 fw-600" id="confidenceText"></span>
+            </div>
+            <div style="background:var(--border);border-radius:8px;height:10px;overflow:hidden">
+              <div id="confidenceBar" style="height:100%;border-radius:8px;transition:width 1s ease;background:var(--accent)"></div>
+            </div>
+          </div>
+          <div style="margin-bottom:20px">
+            <p class="fs-13 text-muted" style="margin-bottom:8px"><i class="fas fa-check-circle" style="color:var(--accent)"></i> Matched symptoms:</p>
+            <div id="matchedSymptoms" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+          <div style="background:rgba(46,125,50,0.08);border:1px solid rgba(46,125,50,0.2);border-radius:10px;padding:16px;margin-bottom:14px">
+            <p style="font-weight:600;color:var(--accent);margin-bottom:8px"><i class="fas fa-prescription-bottle-alt"></i> Treatment</p>
+            <p class="fs-13" id="treatmentText" style="line-height:1.6"></p>
+          </div>
+          <div style="background:rgba(21,101,192,0.07);border:1px solid rgba(21,101,192,0.2);border-radius:10px;padding:16px;margin-bottom:14px">
+            <p style="font-weight:600;color:#1565C0;margin-bottom:8px"><i class="fas fa-shield-alt"></i> Prevention</p>
+            <p class="fs-13" id="preventionText" style="line-height:1.6"></p>
+          </div>
+          <div id="otherPossibleDiv" style="display:none;margin-top:14px">
+            <p class="fs-13 text-muted"><i class="fas fa-question-circle"></i> Also possible: <span id="otherPossible" style="color:var(--text-primary)"></span></p>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+            <p class="fs-12 text-muted"><i class="fas fa-info-circle"></i> AI-assisted diagnosis. Consult a local agricultural expert for confirmation.</p>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="noMatchCard" style="display:none">
+        <div class="card-body" style="text-align:center;padding:40px 24px">
+          <div style="font-size:48px;margin-bottom:12px">🤔</div>
+          <h3>No Match Found</h3>
+          <p class="text-muted fs-13" style="margin-top:8px" id="noMatchMsg"></p>
+          <button class="btn btn-outline" style="margin-top:16px" onclick="resetForm()">Try Again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+.chip{padding:4px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:20px;font-size:12px;cursor:pointer;color:var(--text-secondary);transition:all .15s}
+.chip:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:768px){div[style*="grid-template-columns:1fr 1.4fr"]{grid-template-columns:1fr!important}}
+</style>
+<script>
+function addSymptom(text){const ta=document.getElementById('symptoms');ta.value=ta.value?ta.value+', '+text:text;ta.focus()}
+document.getElementById('farmLink')?.addEventListener('change',function(){const crop=this.options[this.selectedIndex]?.dataset.crop;if(crop){const sel=document.getElementById('cropType');for(let o of sel.options)if(o.value===crop.toLowerCase()){sel.value=o.value;break}}});
+document.getElementById('diseaseForm').addEventListener('submit',async function(e){
+  e.preventDefault();
+  const cropType=document.getElementById('cropType').value,symptoms=document.getElementById('symptoms').value.trim();
+  if(!cropType||!symptoms){alert('Please select a crop and describe symptoms.');return}
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('loadingState').style.display='block';
+  document.getElementById('resultCard').style.display='none';
+  document.getElementById('detectBtn').disabled=true;
+  try{
+    const res=await fetch('/api/disease-detect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crop_type:cropType,symptoms,additional_info:document.getElementById('additionalInfo').value})});
+    const data=await res.json();
+    document.getElementById('loadingState').style.display='none';
+    document.getElementById('resultCard').style.display='block';
+    if(!data.detected){document.getElementById('diagnosisCard').style.display='none';document.getElementById('noMatchCard').style.display='block';document.getElementById('noMatchMsg').textContent=data.message;}
+    else{
+      document.getElementById('diagnosisCard').style.display='block';document.getElementById('noMatchCard').style.display='none';
+      document.getElementById('diseaseTitle').textContent=data.emoji+' '+data.disease;
+      document.getElementById('confidenceText').textContent=data.confidence+'% match';
+      document.getElementById('confidenceBar').style.width=data.confidence+'%';
+      document.getElementById('treatmentText').textContent=data.treatment;
+      document.getElementById('preventionText').textContent=data.prevention;
+      const sev=data.severity,badge=document.getElementById('severityBadge');
+      badge.textContent=sev+' Severity';badge.className='badge '+(sev==='High'?'badge-red':sev==='Medium'?'badge-yellow':'badge-green');
+      document.getElementById('diagnosisHeader').style.borderBottom='3px solid '+(sev==='High'?'#c62828':sev==='Medium'?'#f57f17':'#2e7d32');
+      const ms=document.getElementById('matchedSymptoms');ms.innerHTML='';
+      (data.matched_symptoms||[]).forEach(s=>{const c=document.createElement('span');c.className='chip';c.style.cssText='background:rgba(46,125,50,0.1);border-color:var(--accent);color:var(--accent)';c.textContent='✓ '+s;ms.appendChild(c)});
+      if(data.other_possible?.length){document.getElementById('otherPossibleDiv').style.display='block';document.getElementById('otherPossible').textContent=data.other_possible.join(', ')}
+      else document.getElementById('otherPossibleDiv').style.display='none';
+    }
+  }catch(err){document.getElementById('loadingState').style.display='none';document.getElementById('emptyState').style.display='block';alert('Error: '+err.message)}
+  document.getElementById('detectBtn').disabled=false;
+});
+function resetForm(){document.getElementById('symptoms').value='';document.getElementById('additionalInfo').value='';document.getElementById('resultCard').style.display='none';document.getElementById('emptyState').style.display='block'}
+</script>
+{% endblock %}
