@@ -1,13 +1,21 @@
 """
-GreenField Smart Farming App — app.py v6
-Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Full CRUD | Weather API
+GreenField Smart Farming App — app.py v7
+Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profile Photo | Full CRUD
 """
-import os, sqlite3, json, hashlib, secrets
+import os, sqlite3, json, hashlib, secrets, base64
 from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (Flask, render_template, request, redirect,
                    url_for, jsonify, flash, session)
+
+# ── Google OAuth ──────────────────────────────────────────────────
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+if GOOGLE_OAUTH_ENABLED:
+    from authlib.integrations.flask_client import OAuth
 
 # ── OpenWeather ───────────────────────────────────────────────────
 OPENWEATHER_KEY = os.environ.get("OPENWEATHER_KEY", "")
@@ -24,6 +32,17 @@ APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "gf_smartfarm_dev_secret_2024")
+
+# ── Google OAuth setup ─────────────────────────────────────────────
+if GOOGLE_OAUTH_ENABLED:
+    oauth = OAuth(app)
+    google = oauth.register(
+        name="google",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 
 # ── Database backend selection ─────────────────────────────────────
 # Render provides DATABASE_URL when a PostgreSQL instance is attached.
@@ -161,6 +180,8 @@ def migrate_db(conn):
         ("users", "location",     "TEXT DEFAULT ''"),
         ("users", "farm_name",    "TEXT DEFAULT ''"),
         ("users", "avatar_color", "TEXT DEFAULT '#2E7D32'"),
+        ("users", "avatar_photo", "TEXT DEFAULT ''"),
+        ("users", "google_id",    "TEXT DEFAULT ''"),
     ]
     for table, col, definition in new_cols:
         try:
@@ -190,6 +211,8 @@ def init_db():
             location     TEXT    DEFAULT '',
             farm_name    TEXT    DEFAULT '',
             avatar_color TEXT    DEFAULT '#2E7D32',
+            avatar_photo TEXT    DEFAULT '',
+            google_id    TEXT    DEFAULT '',
             created_at   TEXT    DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS password_resets (
@@ -522,13 +545,73 @@ def login():
             flash(f"👋 Welcome back, <strong>{user['name']}</strong>!", "success")
             return redirect(request.args.get("next") or url_for("dashboard"))
         flash("Invalid email or password. Please try again.", "error")
-    return render_template("login.html")
+    return render_template("login.html", google_enabled=GOOGLE_OAUTH_ENABLED)
 
 @app.route("/logout")
 def logout():
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for("login"))
+
+
+# ── Google OAuth Routes ─────────────────────────────────────────────
+@app.route("/login/google")
+def google_login():
+    if not GOOGLE_OAUTH_ENABLED:
+        flash("Google login is not configured.", "error")
+        return redirect(url_for("login"))
+    redirect_uri = url_for("google_callback", _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route("/login/google/callback")
+def google_callback():
+    if not GOOGLE_OAUTH_ENABLED:
+        return redirect(url_for("login"))
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get("userinfo")
+        if not user_info:
+            flash("Could not get user info from Google.", "error")
+            return redirect(url_for("login"))
+        google_id = user_info.get("sub", "")
+        email     = user_info.get("email", "").lower()
+        name      = user_info.get("name", "Google User")
+        picture   = user_info.get("picture", "")
+
+        conn = get_db()
+        # Check if user exists by google_id or email
+        existing = conn.execute(
+            "SELECT * FROM users WHERE google_id=? OR email=?", (google_id, email)
+        ).fetchone()
+
+        if existing:
+            # Update google_id if logging in with Google for the first time on existing account
+            if not existing["google_id"]:
+                conn.execute("UPDATE users SET google_id=? WHERE id=?", (google_id, existing["id"]))
+                conn.commit()
+            uid  = existing["id"]
+            uname = existing["name"]
+        else:
+            # Register new user via Google
+            fake_pw = generate_password_hash(secrets.token_hex(32))
+            conn.execute(
+                "INSERT INTO users (name, email, password, google_id) VALUES (?,?,?,?)",
+                (name, email, fake_pw, google_id)
+            )
+            conn.commit()
+            new_user = conn.execute("SELECT id, name FROM users WHERE email=?", (email,)).fetchone()
+            uid   = new_user["id"]
+            uname = new_user["name"]
+
+        conn.close()
+        session["user_id"]   = uid
+        session["user_name"] = uname
+        session["user_email"]= email
+        flash(f"✅ Logged in with Google as {uname}.", "success")
+        return redirect(url_for("dashboard"))
+    except Exception as e:
+        flash(f"Google login failed: {str(e)}", "error")
+        return redirect(url_for("login"))
 
 
 # ── Forgot / Reset Password ─────────────────────────────────────────
@@ -674,6 +757,30 @@ def profile():
                 conn.commit()
                 log_activity("updated","profile","Password changed")
                 flash("✅ Password changed.", "success")
+
+        elif action == "upload_photo":
+            photo = request.files.get("profile_photo")
+            if photo and photo.filename:
+                allowed = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+                if photo.content_type not in allowed:
+                    flash("Only JPG, PNG, GIF or WebP images allowed.", "error")
+                else:
+                    photo_bytes = photo.read(2 * 1024 * 1024)  # max 2MB
+                    if len(photo_bytes) >= 2 * 1024 * 1024:
+                        flash("Image too large. Maximum size is 2 MB.", "error")
+                    else:
+                        b64 = base64.b64encode(photo_bytes).decode("utf-8")
+                        data_url = f"data:{photo.content_type};base64,{b64}"
+                        conn.execute("UPDATE users SET avatar_photo=? WHERE id=?", (data_url, uid))
+                        conn.commit()
+                        flash("✅ Profile photo updated.", "success")
+            else:
+                flash("No photo selected.", "error")
+
+        elif action == "remove_photo":
+            conn.execute("UPDATE users SET avatar_photo='' WHERE id=?", (uid,))
+            conn.commit()
+            flash("✅ Profile photo removed.", "success")
 
         elif action == "delete_account":
             confirm_pw = request.form.get("delete_password","")

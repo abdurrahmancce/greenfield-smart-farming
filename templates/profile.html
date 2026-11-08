@@ -13,18 +13,42 @@
 
     <div class="card">
       <div class="card-body" style="text-align:center;padding:28px 20px">
-        <!-- Avatar circle with initial -->
-        <div id="avatarCircle" style="
-          width:80px;height:80px;border-radius:50%;
-          background:{{ user.avatar_color or '#2E7D32' }};
-          color:#fff;font-size:32px;font-weight:800;
-          display:flex;align-items:center;justify-content:center;
-          margin:0 auto 14px;
-          box-shadow:0 4px 16px rgba(46,125,50,.3);
-          cursor:pointer;title:Click to change colour
-          transition:transform .2s ease">
-          {{ user.name[0].upper() }}
+        <!-- Avatar: photo if set, else colour circle -->
+        <div style="position:relative;width:90px;margin:0 auto 14px;cursor:pointer" onclick="document.getElementById('photoInput').click()" title="Click to change photo">
+          {% if user.avatar_photo %}
+          <img id="avatarImg" src="{{ user.avatar_photo }}" alt="Profile photo"
+               style="width:90px;height:90px;border-radius:50%;object-fit:cover;box-shadow:0 4px 16px rgba(46,125,50,.3);display:block"/>
+          <div id="avatarCircle" style="display:none;width:90px;height:90px;border-radius:50%;background:{{ user.avatar_color or '#2E7D32' }};color:#fff;font-size:32px;font-weight:800;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(46,125,50,.3)">{{ user.name[0].upper() }}</div>
+          {% else %}
+          <div id="avatarCircle" style="
+            width:90px;height:90px;border-radius:50%;
+            background:{{ user.avatar_color or '#2E7D32' }};
+            color:#fff;font-size:32px;font-weight:800;
+            display:flex;align-items:center;justify-content:center;
+            box-shadow:0 4px 16px rgba(46,125,50,.3);
+            transition:transform .2s ease">
+            {{ user.name[0].upper() }}
+          </div>
+          <img id="avatarImg" src="" alt="" style="display:none;width:90px;height:90px;border-radius:50%;object-fit:cover;box-shadow:0 4px 16px rgba(46,125,50,.3)"/>
+          {% endif %}
+          <!-- Camera overlay -->
+          <div style="position:absolute;bottom:0;right:0;width:28px;height:28px;border-radius:50%;background:#2E7D32;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.2)">
+            <i class="fas fa-camera" style="color:#fff;font-size:11px"></i>
+          </div>
         </div>
+        <!-- Hidden photo upload form -->
+        <form id="photoForm" method="POST" enctype="multipart/form-data" style="display:none">
+          <input type="hidden" name="action" value="upload_photo">
+          <input type="file" id="photoInput" name="profile_photo" accept="image/*" onchange="submitPhoto(this)">
+        </form>
+        {% if user.avatar_photo %}
+        <form method="POST" style="display:inline">
+          <input type="hidden" name="action" value="remove_photo">
+          <button type="submit" style="background:none;border:none;color:#ef5350;font-size:11px;cursor:pointer;padding:0 0 10px 0">
+            <i class="fas fa-trash-alt"></i> Remove photo
+          </button>
+        </form>
+        {% endif %}
         <div style="font-size:18px;font-weight:800;color:var(--text)">{{ user.name }}</div>
         <div style="font-size:13px;color:var(--muted);margin-top:3px">{{ user.email }}</div>
         {% if user.phone %}
@@ -330,6 +354,28 @@
 </div>
 
 <script>
+// Photo upload — preview then submit
+function submitPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  if (file.size > 2 * 1024 * 1024) {
+    alert('Image too large. Maximum size is 2 MB.');
+    return;
+  }
+  // Show preview instantly
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = document.getElementById('avatarImg');
+    const circle = document.getElementById('avatarCircle');
+    img.src = e.target.result;
+    img.style.display = 'block';
+    if (circle) circle.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+  // Submit form
+  document.getElementById('photoForm').submit();
+}
+
 function checkPwStrength(pw) {
   const bar   = document.getElementById('pwBar');
   const label = document.getElementById('pwLabel');
