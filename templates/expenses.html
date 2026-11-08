@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Farm Expense Tracker{% endblock %}
+{% block page_title %}💰 Farm Expense Tracker{% endblock %}
+{% block page_sub %}Track income, expenses & profit-loss per farm{% endblock %}
+
+{% block head %}
+<style>
+.exp-layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+.pnl-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.pnl-card{border-radius:12px;padding:16px;text-align:center}
+.pnl-income{background:#E8F5E9;border:1px solid #A5D6A7}
+.pnl-expense{background:#FEF2F2;border:1px solid #FFCDD2}
+.pnl-profit{background:linear-gradient(135deg,#E8F5E9,#E3F2FD);border:1px solid #90CAF9}
+.pnl-profit.loss{background:#FEF2F2;border-color:#FFCDD2}
+.pnl-val{font-size:22px;font-weight:800}
+.pnl-lbl{font-size:11px;color:var(--muted);margin-top:4px;font-weight:600}
+.type-income{color:#2E7D32;font-weight:700}
+.type-expense{color:#C62828;font-weight:700}
+.cat-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--muted)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="exp-layout">
+  <!-- Form + filter -->
+  <div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> Add Entry</h3></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_expense') }}">
+          <div class="form-group">
+            <label class="form-label">Farm</label>
+            <select name="farm_id" class="form-control" required>
+              <option value="">— Select Farm —</option>
+              {% for f in farms %}
+              <option value="{{ f.id }}">{{ f.farm_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr">
+            <div class="form-group">
+              <label class="form-label">Type</label>
+              <select name="type" class="form-control" id="typeSelect" onchange="updateCategories()">
+                <option value="expense">💸 Expense</option>
+                <option value="income">💵 Income</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Date</label>
+              <input type="date" name="date" class="form-control" value="{{ today }}" required/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select name="category" class="form-control" id="catSelect">
+              <option>Seeds</option>
+              <option>Fertilizer</option>
+              <option>Pesticide</option>
+              <option>Labour</option>
+              <option>Equipment</option>
+              <option>Irrigation</option>
+              <option>Transport</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Amount (৳ BDT)</label>
+            <input type="number" name="amount" class="form-control" placeholder="e.g. 5000" min="0" step="0.01" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <input type="text" name="description" class="form-control" placeholder="Brief description…"/>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%">
+            <i class="fas fa-save"></i> Save Entry
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Farm filter -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-body" style="padding:14px">
+        <label class="form-label">Filter by Farm</label>
+        <form method="GET">
+          <div style="display:flex;gap:8px">
+            <select name="farm_id" class="form-control" style="flex:1">
+              <option value="">All Farms</option>
+              {% for f in farms %}
+              <option value="{{ f.id }}" {{ 'selected' if farm_id_filter==f.id|string }}>{{ f.farm_name }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary" style="padding:8px 14px">
+              <i class="fas fa-filter"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary + table -->
+  <div>
+    <!-- P&L summary -->
+    <div class="pnl-row">
+      <div class="pnl-card pnl-income">
+        <div class="pnl-val" style="color:#2E7D32">৳{{ "%.0f"|format(total_income) }}</div>
+        <div class="pnl-lbl"><i class="fas fa-arrow-up"></i> Total Income</div>
+      </div>
+      <div class="pnl-card pnl-expense">
+        <div class="pnl-val" style="color:#C62828">৳{{ "%.0f"|format(total_expense) }}</div>
+        <div class="pnl-lbl"><i class="fas fa-arrow-down"></i> Total Expense</div>
+      </div>
+      <div class="pnl-card pnl-profit {{ 'loss' if profit < 0 }}">
+        <div class="pnl-val" style="color:{{ '#2E7D32' if profit >= 0 else '#C62828' }}">
+          {{ '৳' + "%.0f"|format(profit) if profit >= 0 else '-৳' + "%.0f"|format(profit|abs) }}
+        </div>
+        <div class="pnl-lbl">{{ '📈 Net Profit' if profit >= 0 else '📉 Net Loss' }}</div>
+      </div>
+    </div>
+
+    {% if logs %}
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-list"></i> Transactions ({{ logs|length }})</h3>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--bg)">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Date</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Farm</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Type</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Category</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Description</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Amount</th>
+              <th style="padding:10px 14px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+            <tr style="border-top:1px solid var(--border)">
+              <td style="padding:10px 14px;font-size:13px;color:var(--text);font-weight:600">{{ log.date }}</td>
+              <td style="padding:10px 14px;font-size:13px;color:var(--text)">{{ log.farm_name }}</td>
+              <td style="padding:10px 14px">
+                <span class="type-{{ log.type }}" style="font-size:12px">
+                  {{ '💵 Income' if log.type=='income' else '💸 Expense' }}
+                </span>
+              </td>
+              <td style="padding:10px 14px">
+                <span class="cat-pill">{{ log.category }}</span>
+              </td>
+              <td style="padding:10px 14px;font-size:12px;color:var(--muted)">{{ log.description or '—' }}</td>
+              <td style="padding:10px 14px;text-align:right;font-size:14px;font-weight:800;
+                         color:{{ '#2E7D32' if log.type=='income' else '#C62828' }}">
+                {{ '+' if log.type=='income' else '-' }}৳{{ "%.0f"|format(log.amount) }}
+              </td>
+              <td style="padding:10px 14px">
+                <form method="POST" action="{{ url_for('delete_expense', eid=log.id) }}"
+                      onsubmit="return confirm('Delete this entry?')">
+                  <button type="submit" style="background:none;border:none;color:#EF5350;cursor:pointer;font-size:13px">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card" style="text-align:center;padding:48px 24px">
+      <div style="font-size:48px;margin-bottom:14px">💰</div>
+      <h3 style="color:var(--text);margin-bottom:8px">No entries yet</h3>
+      <p style="color:var(--muted);font-size:14px">Start tracking income and expenses for your farms.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const expenseCategories = ["Seeds","Fertilizer","Pesticide","Labour","Equipment","Irrigation","Transport","Other"];
+const incomeCategories  = ["Crop Sale","Livestock Sale","Subsidy","Other Income"];
+
+function updateCategories() {
+  const type = document.getElementById('typeSelect').value;
+  const cats = type === 'income' ? incomeCategories : expenseCategories;
+  const sel  = document.getElementById('catSelect');
+  sel.innerHTML = cats.map(c => `<option>${c}</option>`).join('');
+}
+</script>
+{% endblock %}

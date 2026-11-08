@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Irrigation Log{% endblock %}
+{% block page_title %}💧 Irrigation / Water Log{% endblock %}
+{% block page_sub %}Track water usage and get weather-based irrigation advice{% endblock %}
+
+{% block head %}
+<style>
+.irr-layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+.method-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:700}
+.method-Manual{background:#E8F5E9;color:#2E7D32}
+.method-Drip{background:#E3F2FD;color:#1565C0}
+.method-Sprinkler{background:#E1F5FE;color:#0277BD}
+.method-Flood{background:#FFF3E0;color:#E65100}
+.method-Canal{background:#F3E5F5;color:#6A1B9A}
+.weather-tip-box{border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.weather-tip-rain{background:#E3F2FD;color:#1565C0;border:1px solid #90CAF9}
+.weather-tip-sun{background:#FFFDE7;color:#F57F17;border:1px solid #FFD54F}
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.mini-stat{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+.mini-stat .val{font-size:20px;font-weight:800;color:var(--text)}
+.mini-stat .lbl{font-size:11px;color:var(--muted);margin-top:2px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="irr-layout">
+  <!-- Form -->
+  <div>
+    {% if weather_tip %}
+    <div class="weather-tip-box {{ 'weather-tip-rain' if 'Rain' in weather_tip else 'weather-tip-sun' }}">
+      {{ weather_tip }}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> Log Irrigation</h3></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_irrigation') }}">
+          <div class="form-group">
+            <label class="form-label">Farm</label>
+            <select name="farm_id" class="form-control" required>
+              <option value="">— Select Farm —</option>
+              {% for f in farms %}
+              <option value="{{ f.id }}">{{ f.farm_name }} ({{ f.crop_type }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr">
+            <div class="form-group">
+              <label class="form-label">Date</label>
+              <input type="date" name="date" class="form-control" value="{{ today }}" required/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Method</label>
+              <select name="method" class="form-control">
+                {% for m in ["Manual","Drip","Sprinkler","Flood","Canal"] %}
+                <option value="{{ m }}">{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr">
+            <div class="form-group">
+              <label class="form-label">Water Used (Litres)</label>
+              <input type="number" name="water_liters" class="form-control" placeholder="e.g. 500" min="0" step="0.1"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Duration (minutes)</label>
+              <input type="number" name="duration_min" class="form-control" placeholder="e.g. 30" min="0"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes (optional)</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Soil condition, issues…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%">
+            <i class="fas fa-tint"></i> Log Irrigation
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tips card -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-lightbulb"></i> Water-Saving Tips</h3></div>
+      <div class="card-body" style="padding:14px">
+        {% for tip in [
+          ("Drip irrigation saves 30–50% more water than flood irrigation.","tint"),
+          ("Water in early morning to reduce evaporation.","sun"),
+          ("Check soil moisture before irrigating — overwatering harms roots.","hand-holding-water"),
+          ("Mulch around plants to retain soil moisture.","leaf"),
+          ("Bangladesh monsoon (Jun–Oct): reduce irrigation significantly.","cloud-rain")
+        ] %}
+        <div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--muted)">
+          <i class="fas fa-{{ tip[1] }}" style="color:var(--p-light);margin-top:2px;flex-shrink:0"></i>
+          <span>{{ tip[0] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Logs table -->
+  <div>
+    {% if logs %}
+    <!-- Summary stats -->
+    <div class="stat-row">
+      <div class="mini-stat">
+        <div class="val">{{ logs|length }}</div>
+        <div class="lbl">Total Sessions</div>
+      </div>
+      <div class="mini-stat">
+        <div class="val">{{ "%.0f"|format(logs|sum(attribute='water_liters')) }}L</div>
+        <div class="lbl">Total Water</div>
+      </div>
+      <div class="mini-stat">
+        <div class="val">{{ "%.0f"|format(logs|sum(attribute='duration_min')) }}min</div>
+        <div class="lbl">Total Duration</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-history"></i> Recent Logs</h3>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--bg)">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Date</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Farm</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Method</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Litres</th>
+              <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Mins</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Notes</th>
+              <th style="padding:10px 14px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+            <tr style="border-top:1px solid var(--border)">
+              <td style="padding:10px 14px;font-size:13px;color:var(--text);font-weight:600">{{ log.date }}</td>
+              <td style="padding:10px 14px;font-size:13px;color:var(--text)">{{ log.farm_name }}</td>
+              <td style="padding:10px 14px">
+                <span class="method-badge method-{{ log.method }}">{{ log.method }}</span>
+              </td>
+              <td style="padding:10px 14px;text-align:right;font-size:13px;font-weight:700;color:#1565C0">
+                {{ "%.0f"|format(log.water_liters) }}L
+              </td>
+              <td style="padding:10px 14px;text-align:right;font-size:13px;color:var(--muted)">
+                {{ log.duration_min }}
+              </td>
+              <td style="padding:10px 14px;font-size:12px;color:var(--muted)">{{ log.notes or '—' }}</td>
+              <td style="padding:10px 14px">
+                <form method="POST" action="{{ url_for('delete_irrigation', iid=log.id) }}"
+                      onsubmit="return confirm('Delete this log?')">
+                  <button type="submit" style="background:none;border:none;color:#EF5350;cursor:pointer;font-size:13px">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card" style="text-align:center;padding:48px 24px">
+      <div style="font-size:48px;margin-bottom:14px">💧</div>
+      <h3 style="color:var(--text);margin-bottom:8px">No irrigation logs yet</h3>
+      <p style="color:var(--muted);font-size:14px">Start logging your irrigation sessions to track water usage.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

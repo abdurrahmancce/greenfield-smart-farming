@@ -263,6 +263,39 @@ def init_db():
             detail     TEXT    DEFAULT '',
             created_at TEXT    DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS crop_growth (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            farm_id        INTEGER NOT NULL,
+            user_id        INTEGER NOT NULL,
+            planting_date  TEXT    NOT NULL,
+            expected_days  INTEGER NOT NULL DEFAULT 90,
+            harvest_date   TEXT    DEFAULT '',
+            growth_stage   TEXT    NOT NULL DEFAULT 'Seedling',
+            notes          TEXT    DEFAULT '',
+            created_at     TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS irrigation_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            farm_id      INTEGER NOT NULL,
+            user_id      INTEGER NOT NULL,
+            date         TEXT    NOT NULL,
+            water_liters REAL    NOT NULL DEFAULT 0,
+            method       TEXT    NOT NULL DEFAULT 'Manual',
+            duration_min INTEGER NOT NULL DEFAULT 0,
+            notes        TEXT    DEFAULT '',
+            created_at   TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS expense_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            farm_id     INTEGER NOT NULL,
+            user_id     INTEGER NOT NULL,
+            type        TEXT    NOT NULL DEFAULT 'expense',
+            category    TEXT    NOT NULL DEFAULT 'Other',
+            amount      REAL    NOT NULL,
+            description TEXT    DEFAULT '',
+            date        TEXT    NOT NULL,
+            created_at  TEXT    DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
     conn.close()
@@ -369,7 +402,12 @@ def current_user():
 # Inject user into every template automatically
 @app.context_processor
 def inject_user():
-    return {"current_user": current_user()}
+    lang = session.get("lang", "en")
+    return {
+        "current_user": current_user(),
+        "lang": lang,
+        "is_bn": lang == "bn",
+    }
 
 # ══════════════════════════════════════════════════════════════════
 #  DOMAIN HELPERS
@@ -1237,6 +1275,336 @@ def api_disease_detect():
         return jsonify({"error": "Please describe the symptoms"}), 400
     result = detect_disease(crop_type, symptoms, additional)
     return jsonify(result)
+
+# ══════════════════════════════════════════════════════════════════
+#  CROP GROWTH TRACKER
+# ══════════════════════════════════════════════════════════════════
+@app.route("/growth")
+@login_required
+def growth_page():
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    farms = conn.execute(
+        f"SELECT id, farm_name, crop_type, planting_date FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
+    ).fetchall()
+    growth_records = conn.execute(
+        f"""SELECT g.*, f.farm_name, f.crop_type FROM crop_growth g
+            JOIN farms f ON g.farm_id=f.id
+            WHERE g.user_id={ph} ORDER BY g.created_at DESC""", (uid,)
+    ).fetchall()
+    conn.close()
+    today = datetime.now().strftime("%Y-%m-%d")
+    return render_template("growth.html", farms=farms, records=growth_records, today=today)
+
+@app.route("/growth/add", methods=["POST"])
+@login_required
+def add_growth():
+    uid = current_user()["id"]
+    farm_id      = request.form.get("farm_id")
+    planting_date= request.form.get("planting_date","")
+    expected_days= int(request.form.get("expected_days", 90))
+    growth_stage = request.form.get("growth_stage","Seedling")
+    notes        = request.form.get("notes","")
+    if not farm_id or not planting_date:
+        flash("Farm and planting date are required.", "error")
+        return redirect(url_for("growth_page"))
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    # Calculate harvest date
+    from datetime import date, timedelta
+    pd = datetime.strptime(planting_date, "%Y-%m-%d")
+    harvest_date = (pd + timedelta(days=expected_days)).strftime("%Y-%m-%d")
+    conn.execute(
+        f"INSERT INTO crop_growth (farm_id,user_id,planting_date,expected_days,harvest_date,growth_stage,notes) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+        (farm_id, uid, planting_date, expected_days, harvest_date, growth_stage, notes)
+    )
+    conn.commit()
+    conn.close()
+    flash("✅ Growth record added.", "success")
+    return redirect(url_for("growth_page"))
+
+@app.route("/growth/update/<int:gid>", methods=["POST"])
+@login_required
+def update_growth(gid):
+    uid = current_user()["id"]
+    growth_stage = request.form.get("growth_stage","")
+    notes        = request.form.get("notes","")
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(
+        f"UPDATE crop_growth SET growth_stage={ph}, notes={ph} WHERE id={ph} AND user_id={ph}",
+        (growth_stage, notes, gid, uid)
+    )
+    conn.commit()
+    conn.close()
+    flash("✅ Growth stage updated.", "success")
+    return redirect(url_for("growth_page"))
+
+@app.route("/growth/delete/<int:gid>", methods=["POST"])
+@login_required
+def delete_growth(gid):
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(f"DELETE FROM crop_growth WHERE id={ph} AND user_id={ph}", (gid, uid))
+    conn.commit()
+    conn.close()
+    flash("Growth record deleted.", "success")
+    return redirect(url_for("growth_page"))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  IRRIGATION LOG
+# ══════════════════════════════════════════════════════════════════
+@app.route("/irrigation")
+@login_required
+def irrigation_page():
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    farms = conn.execute(
+        f"SELECT id, farm_name, crop_type FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
+    ).fetchall()
+    logs = conn.execute(
+        f"""SELECT i.*, f.farm_name FROM irrigation_log i
+            JOIN farms f ON i.farm_id=f.id
+            WHERE i.user_id={ph} ORDER BY i.date DESC LIMIT 50""", (uid,)
+    ).fetchall()
+    # Weather suggestion
+    weather_tip = ""
+    try:
+        loc = "Chittagong"
+        resp = __import__("requests").get(
+            f"https://api.openweathermap.org/data/2.5/forecast?q={loc}&appid={OPENWEATHER_KEY}&units=metric&cnt=8",
+            timeout=5
+        ).json()
+        rain_soon = any(
+            "rain" in item.get("weather",[{}])[0].get("main","").lower()
+            for item in resp.get("list",[])[:4]
+        )
+        weather_tip = "🌧️ Rain expected in the next 24 hours — irrigation may not be needed." if rain_soon else "☀️ No rain expected — consider irrigating your crops."
+    except Exception:
+        pass
+    conn.close()
+    today = datetime.now().strftime("%Y-%m-%d")
+    return render_template("irrigation.html", farms=farms, logs=logs, weather_tip=weather_tip, today=today)
+
+@app.route("/irrigation/add", methods=["POST"])
+@login_required
+def add_irrigation():
+    uid = current_user()["id"]
+    farm_id      = request.form.get("farm_id")
+    date         = request.form.get("date","")
+    water_liters = float(request.form.get("water_liters", 0) or 0)
+    method       = request.form.get("method","Manual")
+    duration_min = int(request.form.get("duration_min", 0) or 0)
+    notes        = request.form.get("notes","")
+    if not farm_id or not date:
+        flash("Farm and date are required.", "error")
+        return redirect(url_for("irrigation_page"))
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(
+        f"INSERT INTO irrigation_log (farm_id,user_id,date,water_liters,method,duration_min,notes) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+        (farm_id, uid, date, water_liters, method, duration_min, notes)
+    )
+    conn.commit()
+    conn.close()
+    flash("✅ Irrigation logged.", "success")
+    return redirect(url_for("irrigation_page"))
+
+@app.route("/irrigation/delete/<int:iid>", methods=["POST"])
+@login_required
+def delete_irrigation(iid):
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(f"DELETE FROM irrigation_log WHERE id={ph} AND user_id={ph}", (iid, uid))
+    conn.commit()
+    conn.close()
+    flash("Log deleted.", "success")
+    return redirect(url_for("irrigation_page"))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  FARM EXPENSE TRACKER
+# ══════════════════════════════════════════════════════════════════
+@app.route("/expenses")
+@login_required
+def expenses_page():
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    farms = conn.execute(
+        f"SELECT id, farm_name, crop_type FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
+    ).fetchall()
+    farm_id_filter = request.args.get("farm_id", "")
+    if farm_id_filter:
+        logs = conn.execute(
+            f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
+                WHERE e.user_id={ph} AND e.farm_id={ph} ORDER BY e.date DESC""", (uid, farm_id_filter)
+        ).fetchall()
+    else:
+        logs = conn.execute(
+            f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
+                WHERE e.user_id={ph} ORDER BY e.date DESC LIMIT 100""", (uid,)
+        ).fetchall()
+    # Summary
+    total_income  = sum(r["amount"] for r in logs if r["type"] == "income")
+    total_expense = sum(r["amount"] for r in logs if r["type"] == "expense")
+    profit = total_income - total_expense
+    conn.close()
+    today = datetime.now().strftime("%Y-%m-%d")
+    return render_template("expenses.html", farms=farms, logs=logs,
+                           total_income=total_income, total_expense=total_expense,
+                           profit=profit, today=today, farm_id_filter=farm_id_filter)
+
+@app.route("/expenses/add", methods=["POST"])
+@login_required
+def add_expense():
+    uid      = current_user()["id"]
+    farm_id  = request.form.get("farm_id")
+    etype    = request.form.get("type","expense")
+    category = request.form.get("category","Other")
+    amount   = float(request.form.get("amount", 0) or 0)
+    desc     = request.form.get("description","")
+    date     = request.form.get("date","")
+    if not farm_id or not date or amount <= 0:
+        flash("Farm, date and amount are required.", "error")
+        return redirect(url_for("expenses_page"))
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(
+        f"INSERT INTO expense_log (farm_id,user_id,type,category,amount,description,date) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+        (farm_id, uid, etype, category, amount, desc, date)
+    )
+    conn.commit()
+    conn.close()
+    flash("✅ Entry saved.", "success")
+    return redirect(url_for("expenses_page"))
+
+@app.route("/expenses/delete/<int:eid>", methods=["POST"])
+@login_required
+def delete_expense(eid):
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(f"DELETE FROM expense_log WHERE id={ph} AND user_id={ph}", (eid, uid))
+    conn.commit()
+    conn.close()
+    flash("Entry deleted.", "success")
+    return redirect(url_for("expenses_page"))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  MARKET PRICE TRACKER
+# ══════════════════════════════════════════════════════════════════
+MARKET_PRICES = {
+    "Rice (Boro)":      {"price": 32, "unit": "kg", "trend": "up",   "tip": "Good time to sell — Boro prices are rising after harvest season."},
+    "Rice (Aman)":      {"price": 28, "unit": "kg", "trend": "stable","tip": "Prices stable. Store for 2-3 weeks for better return."},
+    "Wheat":            {"price": 38, "unit": "kg", "trend": "up",   "tip": "Wheat prices rising due to import costs. Sell now."},
+    "Potato":           {"price": 22, "unit": "kg", "trend": "down", "tip": "Prices dropping. Consider cold storage if possible."},
+    "Tomato":           {"price": 45, "unit": "kg", "trend": "up",   "tip": "High demand in Dhaka markets. Good time to sell."},
+    "Brinjal":          {"price": 30, "unit": "kg", "trend": "stable","tip": "Stable demand. Local market preferred."},
+    "Onion":            {"price": 55, "unit": "kg", "trend": "up",   "tip": "Onion prices surging. Excellent selling opportunity."},
+    "Garlic":           {"price": 120,"unit": "kg", "trend": "up",   "tip": "High value crop. Dhaka wholesale recommended."},
+    "Mustard":          {"price": 65, "unit": "kg", "trend": "stable","tip": "Steady demand from oil mills."},
+    "Jute":             {"price": 42, "unit": "kg", "trend": "up",   "tip": "Export demand increasing. Consider bulk selling."},
+    "Maize":            {"price": 25, "unit": "kg", "trend": "stable","tip": "Poultry feed demand is consistent. Fair price now."},
+    "Lentil (Masur)":   {"price": 95, "unit": "kg", "trend": "up",   "tip": "High price due to low local production. Good return."},
+    "Chilli (dry)":     {"price": 180,"unit": "kg", "trend": "up",   "tip": "Best selling crop this season. Act fast."},
+    "Ginger":           {"price": 90, "unit": "kg", "trend": "stable","tip": "Consistent spice market demand."},
+    "Turmeric":         {"price": 75, "unit": "kg", "trend": "stable","tip": "Pharma and food industry demand is steady."},
+}
+
+@app.route("/market")
+@login_required
+def market_page():
+    return render_template("market.html", prices=MARKET_PRICES,
+                           updated=datetime.now().strftime("%d %b %Y"))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CROP CALENDAR
+# ══════════════════════════════════════════════════════════════════
+CROP_CALENDAR = {
+    "Rice (Boro)":    {"sow":["Nov","Dec","Jan"],  "harvest":["Apr","May"],      "region":"All Bangladesh", "days":130, "emoji":"🌾"},
+    "Rice (Aman)":    {"sow":["Jun","Jul","Aug"],  "harvest":["Nov","Dec"],      "region":"All Bangladesh", "days":140, "emoji":"🌾"},
+    "Rice (Aus)":     {"sow":["Mar","Apr"],         "harvest":["Jul","Aug"],      "region":"All Bangladesh", "days":110, "emoji":"🌾"},
+    "Wheat":          {"sow":["Nov","Dec"],          "harvest":["Mar","Apr"],      "region":"North Bangladesh","days":110, "emoji":"🌿"},
+    "Potato":         {"sow":["Oct","Nov"],          "harvest":["Jan","Feb"],      "region":"North & Central", "days":90,  "emoji":"🥔"},
+    "Tomato":         {"sow":["Sep","Oct"],          "harvest":["Dec","Jan","Feb"],"region":"All Bangladesh", "days":90,  "emoji":"🍅"},
+    "Onion":          {"sow":["Oct","Nov"],          "harvest":["Feb","Mar"],      "region":"South Bangladesh","days":100, "emoji":"🧅"},
+    "Mustard":        {"sow":["Oct","Nov"],          "harvest":["Feb","Mar"],      "region":"North Bangladesh","days":100, "emoji":"🌼"},
+    "Jute":           {"sow":["Mar","Apr","May"],    "harvest":["Jul","Aug"],      "region":"All Bangladesh", "days":120, "emoji":"🌿"},
+    "Maize":          {"sow":["Oct","Nov"],          "harvest":["Feb","Mar"],      "region":"North Bangladesh","days":120, "emoji":"🌽"},
+    "Brinjal":        {"sow":["Aug","Sep"],          "harvest":["Nov","Dec","Jan"],"region":"All Bangladesh", "days":80,  "emoji":"🍆"},
+    "Chilli":         {"sow":["Sep","Oct"],          "harvest":["Jan","Feb","Mar"],"region":"South Bangladesh","days":120, "emoji":"🌶️"},
+    "Garlic":         {"sow":["Oct","Nov"],          "harvest":["Feb","Mar"],      "region":"North Bangladesh","days":100, "emoji":"🧄"},
+    "Ginger":         {"sow":["Mar","Apr"],          "harvest":["Nov","Dec"],      "region":"Hilly regions",   "days":240, "emoji":"🫚"},
+    "Lentil":         {"sow":["Oct","Nov"],          "harvest":["Feb","Mar"],      "region":"North Bangladesh","days":100, "emoji":"🫘"},
+}
+
+@app.route("/calendar")
+@login_required
+def calendar_page():
+    current_month = datetime.now().strftime("%b")
+    # Mark which crops can be sown or harvested this month
+    for crop, data in CROP_CALENDAR.items():
+        data["sow_now"]     = current_month in data["sow"]
+        data["harvest_now"] = current_month in data["harvest"]
+    return render_template("calendar.html", crops=CROP_CALENDAR,
+                           current_month=current_month, months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"])
+
+
+# ══════════════════════════════════════════════════════════════════
+#  LANGUAGE TOGGLE
+# ══════════════════════════════════════════════════════════════════
+@app.route("/set-language/<lang>")
+def set_language(lang):
+    if lang in ("en", "bn"):
+        session["lang"] = lang
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PDF FARM REPORT
+# ══════════════════════════════════════════════════════════════════
+@app.route("/report")
+@login_required
+def report_page():
+    uid = current_user()["id"]
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    farms = conn.execute(
+        f"SELECT * FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
+    ).fetchall()
+    growth = conn.execute(
+        f"""SELECT g.*, f.farm_name FROM crop_growth g JOIN farms f ON g.farm_id=f.id
+            WHERE g.user_id={ph} ORDER BY g.created_at DESC LIMIT 20""", (uid,)
+    ).fetchall()
+    irrigations = conn.execute(
+        f"""SELECT i.*, f.farm_name FROM irrigation_log i JOIN farms f ON i.farm_id=f.id
+            WHERE i.user_id={ph} ORDER BY i.date DESC LIMIT 20""", (uid,)
+    ).fetchall()
+    expenses = conn.execute(
+        f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
+            WHERE e.user_id={ph} ORDER BY e.date DESC LIMIT 50""", (uid,)
+    ).fetchall()
+    total_income  = sum(r["amount"] for r in expenses if r["type"] == "income")
+    total_expense = sum(r["amount"] for r in expenses if r["type"] == "expense")
+    profit = total_income - total_expense
+
+    user = current_user()
+    conn.close()
+    today = datetime.now().strftime("%d %B %Y")
+    return render_template("report.html",
+        user=user, farms=farms, growth=growth,
+        irrigations=irrigations, expenses=expenses,
+        total_income=total_income, total_expense=total_expense,
+        profit=profit, today=today)
+
 
 # ── Entry ─────────────────────────────────────────────────────────
 # Always init DB (works for both gunicorn and dev server)

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Crop Calendar{% endblock %}
+{% block page_title %}📅 Crop Calendar{% endblock %}
+{% block page_sub %}Bangladesh climate-based monthly planting & harvest guide{% endblock %}
+
+{% block head %}
+<style>
+.cal-header{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.month-pill{padding:5px 12px;border-radius:99px;font-size:12.5px;font-weight:700;border:1.5px solid var(--border);background:var(--bg-card);color:var(--muted);cursor:pointer;transition:all .18s}
+.month-pill.current{background:var(--p-mid);color:#fff;border-color:var(--p-mid)}
+.month-pill:hover:not(.current){background:var(--bg);border-color:var(--p-pale)}
+.cal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.cal-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:transform .18s}
+.cal-card:hover{transform:translateY(-2px)}
+.cal-card-top{padding:14px 16px;border-bottom:1px solid var(--border)}
+.cal-card-name{font-size:15px;font-weight:700;color:var(--text)}
+.cal-card-emoji{font-size:22px;margin-right:8px}
+.month-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.mtag{padding:2px 7px;border-radius:99px;font-size:10.5px;font-weight:700}
+.mtag-sow{background:#E8F5E9;color:#2E7D32}
+.mtag-harvest{background:#FFF3E0;color:#E65100}
+.mtag-sow-now{background:#2E7D32;color:#fff}
+.mtag-harvest-now{background:#E65100;color:#fff}
+.cal-card-body{padding:12px 16px;font-size:12.5px;color:var(--muted)}
+.now-banner{background:linear-gradient(135deg,#E8F5E9,#F0FFF0);border:1.5px solid #A5D6A7;border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:700;color:#2E7D32;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.season-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.season-card{border-radius:10px;padding:12px;text-align:center;border:1px solid var(--border)}
+.filter-bar2{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filter-btn2{padding:5px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:all .18s}
+.filter-btn2.active,.filter-btn2:hover{background:var(--p-mid);color:#fff;border-color:var(--p-mid)}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Season overview -->
+<div class="season-row">
+  {% for season, months, emoji, color in [
+    ("Rabi (Winter)", "Oct–Mar", "❄️", "#E3F2FD"),
+    ("Kharif-I (Pre-monsoon)", "Mar–Jun", "🌸", "#FFF8E1"),
+    ("Kharif-II (Monsoon)", "Jun–Oct", "🌧️", "#E8F5E9"),
+    ("Year-round", "All months", "🌿", "#F3E5F5")
+  ] %}
+  <div class="season-card" style="background:{{ color }}">
+    <div style="font-size:22px">{{ emoji }}</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin:4px 0">{{ season }}</div>
+    <div style="font-size:11px;color:var(--muted)">{{ months }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Current month highlight -->
+<div class="now-banner">
+  <i class="fas fa-calendar-check"></i>
+  Current month: <strong>{{ current_month }}</strong> —
+  crops you can sow or harvest this month are highlighted below.
+</div>
+
+<!-- Month filter -->
+<div class="cal-header">
+  {% for m in months %}
+  <button class="month-pill {{ 'current' if m == current_month }}"
+          onclick="filterMonth('{{ m }}', this)">{{ m }}</button>
+  {% endfor %}
+  <button class="month-pill" onclick="filterMonth('all', this)">All</button>
+</div>
+
+<!-- Filter by action -->
+<div class="filter-bar2">
+  <button class="filter-btn2 active" onclick="filterAction('all',this)">All Crops</button>
+  <button class="filter-btn2" onclick="filterAction('sow',this)">🌱 Sow Now</button>
+  <button class="filter-btn2" onclick="filterAction('harvest',this)">✂️ Harvest Now</button>
+</div>
+
+<!-- Crop cards -->
+<div class="cal-grid" id="calGrid">
+  {% for crop, data in crops.items() %}
+  <div class="cal-card"
+       data-sow="{{ data.sow|join(',') }}"
+       data-harvest="{{ data.harvest|join(',') }}"
+       data-sow-now="{{ 'yes' if data.sow_now else 'no' }}"
+       data-harvest-now="{{ 'yes' if data.harvest_now else 'no' }}">
+    <div class="cal-card-top">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span class="cal-card-emoji">{{ data.emoji }}</span>
+          <span class="cal-card-name">{{ crop }}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">{{ data.days }}d</div>
+      </div>
+      <div class="month-tags" style="margin-top:8px">
+        <span style="font-size:10px;color:var(--muted);margin-right:4px">Sow:</span>
+        {% for m in data.sow %}
+        <span class="mtag {{ 'mtag-sow-now' if m == current_month else 'mtag-sow' }}">{{ m }}</span>
+        {% endfor %}
+      </div>
+      <div class="month-tags">
+        <span style="font-size:10px;color:var(--muted);margin-right:4px">Harvest:</span>
+        {% for m in data.harvest %}
+        <span class="mtag {{ 'mtag-harvest-now' if m == current_month else 'mtag-harvest' }}">{{ m }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="cal-card-body">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span><i class="fas fa-map-marker-alt" style="color:var(--p-light)"></i> {{ data.region }}</span>
+        <span><i class="fas fa-clock" style="color:var(--p-light)"></i> {{ data.days }} days</span>
+      </div>
+      {% if data.sow_now %}
+      <div style="color:#2E7D32;font-weight:700;font-size:12px;margin-top:4px">
+        🌱 Good time to sow this month!
+      </div>
+      {% endif %}
+      {% if data.harvest_now %}
+      <div style="color:#E65100;font-weight:700;font-size:12px;margin-top:4px">
+        ✂️ Harvest season is now!
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+let activeMonth = '{{ current_month }}';
+let activeAction = 'all';
+
+function filterMonth(month, btn) {
+  activeMonth = month;
+  document.querySelectorAll('.month-pill').forEach(b => b.classList.remove('current'));
+  btn.classList.add('current');
+  applyFilter();
+}
+
+function filterAction(action, btn) {
+  activeAction = action;
+  document.querySelectorAll('.filter-btn2').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilter();
+}
+
+function applyFilter() {
+  document.querySelectorAll('.cal-card').forEach(card => {
+    const sowMonths     = card.dataset.sow.split(',');
+    const harvestMonths = card.dataset.harvest.split(',');
+    const sowNow        = card.dataset.sowNow === 'yes';
+    const harvestNow    = card.dataset.harvestNow === 'yes';
+
+    const monthMatch = activeMonth === 'all' ||
+                       sowMonths.includes(activeMonth) ||
+                       harvestMonths.includes(activeMonth);
+
+    const actionMatch = activeAction === 'all' ||
+                        (activeAction === 'sow'     && sowNow) ||
+                        (activeAction === 'harvest' && harvestNow);
+
+    card.style.display = (monthMatch && actionMatch) ? '' : 'none';
+  });
+}
+// Apply current month filter on load
+applyFilter();
+</script>
+{% endblock %}

@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Farm Report{% endblock %}
+{% block page_title %}📄 Farm Report{% endblock %}
+{% block page_sub %}Printable farm summary — {{ today }}{% endblock %}
+
+{% block head %}
+<style>
+/* Screen styles */
+.report-wrap{max-width:900px;margin:0 auto}
+.report-actions{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.report-paper{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:40px;position:relative}
+
+/* Print styles */
+@media print {
+  .topbar,.sidebar,.sidebar-overlay,.report-actions,.hamburger,
+  .flash-wrap,.user-menu,.theme-toggle,.nav-section {display:none!important}
+  .main-wrap{margin:0!important}
+  .page{padding:0!important}
+  .app-shell{display:block!important}
+  .report-paper{border:none!important;padding:20px!important;border-radius:0!important;box-shadow:none!important}
+  body{background:#fff!important;color:#000!important}
+  .report-wrap{max-width:100%}
+  .rp-section{page-break-inside:avoid}
+  table{font-size:11px!important}
+}
+
+.rp-logo{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#2E7D32,#43A047);
+         display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;flex-shrink:0}
+.rp-title{font-size:24px;font-weight:900;color:#1B5E20;margin-bottom:2px}
+.rp-subtitle{font-size:12.5px;color:#666}
+.rp-divider{height:2px;background:linear-gradient(90deg,#2E7D32,#A5D6A7,transparent);margin:20px 0}
+.rp-section{margin-bottom:28px}
+.rp-section-title{font-size:14px;font-weight:800;color:#1B5E20;text-transform:uppercase;letter-spacing:.6px;
+                  padding-bottom:7px;border-bottom:2px solid #E8F5E9;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.rp-farm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.rp-farm-card{border:1.5px solid #C8E6C9;border-radius:10px;padding:12px;background:#F9FFF9}
+.rp-farm-name{font-size:14px;font-weight:700;color:#1B5E20;margin-bottom:6px}
+.rp-farm-row{font-size:12px;color:#555;display:flex;gap:4px;margin-bottom:3px}
+.rp-farm-row strong{color:#333;min-width:80px}
+.pnl-box{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.pnl-item{border-radius:10px;padding:12px;text-align:center}
+.pnl-inc{background:#E8F5E9;border:1px solid #A5D6A7}
+.pnl-exp{background:#FEF2F2;border:1px solid #FFCDD2}
+.pnl-pft{background:#E3F2FD;border:1px solid #90CAF9}
+.pnl-pft.loss{background:#FEF2F2;border-color:#FFCDD2}
+.pnl-val{font-size:18px;font-weight:800}
+.pnl-lbl{font-size:10px;color:#666;margin-top:3px;font-weight:600}
+.rp-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.rp-table th{background:#F1F8E9;padding:8px 10px;text-align:left;font-weight:700;color:#2E7D32;font-size:11px;text-transform:uppercase}
+.rp-table td{padding:8px 10px;border-bottom:1px solid #E8F5E9;color:#333}
+.rp-table tr:last-child td{border-bottom:none}
+.stage-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;background:#E8F5E9;color:#2E7D32}
+.rp-footer{text-align:center;font-size:11px;color:#999;margin-top:28px;padding-top:14px;border-top:1px solid #eee}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-wrap">
+
+  <!-- Action buttons -->
+  <div class="report-actions">
+    <button onclick="window.print()" class="btn btn-primary">
+      <i class="fas fa-print"></i> Print / Save PDF
+    </button>
+    <button onclick="downloadReport()" class="btn btn-secondary">
+      <i class="fas fa-download"></i> Download HTML
+    </button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+      <i class="fas fa-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
+
+  <!-- Report paper -->
+  <div class="report-paper" id="reportContent">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:8px">
+      <div class="rp-logo">🌾</div>
+      <div>
+        <div class="rp-title">GreenField Farm Report</div>
+        <div class="rp-subtitle">Farmer: <strong>{{ user.name }}</strong> &nbsp;|&nbsp; Date: <strong>{{ today }}</strong></div>
+        <div class="rp-subtitle" style="margin-top:2px">Email: {{ user.email }}</div>
+      </div>
+    </div>
+    <div class="rp-divider"></div>
+
+    <!-- Farm Summary -->
+    <div class="rp-section">
+      <div class="rp-section-title"><i class="fas fa-tractor"></i> Farm Overview ({{ farms|length }} Farms)</div>
+      {% if farms %}
+      <div class="rp-farm-grid">
+        {% for f in farms %}
+        <div class="rp-farm-card">
+          <div class="rp-farm-name">{{ f.farm_name }}</div>
+          <div class="rp-farm-row"><strong>Crop:</strong> {{ f.crop_type }}</div>
+          <div class="rp-farm-row"><strong>Area:</strong> {{ f.area_acres }} acres</div>
+          <div class="rp-farm-row"><strong>Location:</strong> {{ f.location or '—' }}</div>
+          <div class="rp-farm-row"><strong>Planted:</strong> {{ f.planting_date or '—' }}</div>
+          <div class="rp-farm-row"><strong>Status:</strong> {{ f.status or 'Active' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:#999;font-size:13px">No farms recorded yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Financial Summary -->
+    <div class="rp-section">
+      <div class="rp-section-title"><i class="fas fa-coins"></i> Financial Summary</div>
+      <div class="pnl-box">
+        <div class="pnl-item pnl-inc">
+          <div class="pnl-val" style="color:#2E7D32">৳{{ "%.0f"|format(total_income) }}</div>
+          <div class="pnl-lbl">Total Income</div>
+        </div>
+        <div class="pnl-item pnl-exp">
+          <div class="pnl-val" style="color:#C62828">৳{{ "%.0f"|format(total_expense) }}</div>
+          <div class="pnl-lbl">Total Expense</div>
+        </div>
+        <div class="pnl-item pnl-pft {{ 'loss' if profit < 0 }}">
+          <div class="pnl-val" style="color:{{ '#1565C0' if profit >= 0 else '#C62828' }}">
+            {% if profit >= 0 %}৳{{ "%.0f"|format(profit) }}{% else %}-৳{{ "%.0f"|format(profit|abs) }}{% endif %}
+          </div>
+          <div class="pnl-lbl">{{ 'Net Profit' if profit >= 0 else 'Net Loss' }}</div>
+        </div>
+      </div>
+
+      {% if expenses %}
+      <table class="rp-table">
+        <thead>
+          <tr><th>Date</th><th>Farm</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right">Amount (৳)</th></tr>
+        </thead>
+        <tbody>
+          {% for e in expenses %}
+          <tr>
+            <td>{{ e.date }}</td>
+            <td>{{ e.farm_name }}</td>
+            <td style="color:{{ '#2E7D32' if e.type=='income' else '#C62828' }};font-weight:700">
+              {{ '↑ Income' if e.type=='income' else '↓ Expense' }}
+            </td>
+            <td>{{ e.category }}</td>
+            <td>{{ e.description or '—' }}</td>
+            <td style="text-align:right;font-weight:700;color:{{ '#2E7D32' if e.type=='income' else '#C62828' }}">
+              {{ '+' if e.type=='income' else '-' }}{{ "%.0f"|format(e.amount) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:#999;font-size:13px">No expense records found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Crop Growth -->
+    <div class="rp-section">
+      <div class="rp-section-title"><i class="fas fa-seedling"></i> Crop Growth Status</div>
+      {% if growth %}
+      <table class="rp-table">
+        <thead>
+          <tr><th>Farm</th><th>Crop</th><th>Planted</th><th>Expected Harvest</th><th>Stage</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for g in growth %}
+          <tr>
+            <td>{{ g.farm_name }}</td>
+            <td>{{ g.crop_type or '—' }}</td>
+            <td>{{ g.planting_date }}</td>
+            <td>{{ g.harvest_date }}</td>
+            <td><span class="stage-pill">{{ g.growth_stage }}</span></td>
+            <td style="color:#666">{{ g.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:#999;font-size:13px">No growth records found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Irrigation -->
+    <div class="rp-section">
+      <div class="rp-section-title"><i class="fas fa-tint"></i> Irrigation Log (Recent {{ irrigations|length }})</div>
+      {% if irrigations %}
+      <table class="rp-table">
+        <thead>
+          <tr><th>Date</th><th>Farm</th><th>Method</th><th>Water (L)</th><th>Duration</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for i in irrigations %}
+          <tr>
+            <td>{{ i.date }}</td>
+            <td>{{ i.farm_name }}</td>
+            <td>{{ i.method }}</td>
+            <td style="font-weight:700;color:#1565C0">{{ "%.0f"|format(i.water_liters) }}L</td>
+            <td>{{ i.duration_min }} min</td>
+            <td style="color:#666">{{ i.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:#999;font-size:13px">No irrigation records found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <div class="rp-footer">
+      Generated by <strong>GreenField Smart Farming Platform</strong> &nbsp;|&nbsp; {{ today }}<br/>
+      This report is for reference purposes. Verify data with local agricultural office.
+    </div>
+
+  </div><!-- /report-paper -->
+</div>
+
+<script>
+function downloadReport() {
+  const content = document.getElementById('reportContent').outerHTML;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>GreenField Farm Report</title>
+  <style>
+    body{font-family:Arial,sans-serif;padding:20px;color:#333;max-width:900px;margin:0 auto}
+    .rp-logo{width:48px;height:48px;border-radius:12px;background:#2E7D32;display:inline-flex;align-items:center;justify-content:center;font-size:22px}
+    .rp-title{font-size:22px;font-weight:900;color:#1B5E20}
+    .rp-divider{height:2px;background:#2E7D32;margin:16px 0}
+    .rp-section-title{font-size:13px;font-weight:800;color:#1B5E20;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #E8F5E9;margin-bottom:12px}
+    .rp-farm-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .rp-farm-card{border:1px solid #C8E6C9;border-radius:8px;padding:10px;background:#F9FFF9}
+    .rp-farm-name{font-size:13px;font-weight:700;color:#1B5E20;margin-bottom:5px}
+    .rp-farm-row{font-size:11px;color:#555;margin-bottom:2px}
+    .pnl-box{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+    .pnl-item{border-radius:8px;padding:10px;text-align:center}
+    .pnl-inc{background:#E8F5E9;border:1px solid #A5D6A7}
+    .pnl-exp{background:#FEF2F2;border:1px solid #FFCDD2}
+    .pnl-pft{background:#E3F2FD;border:1px solid #90CAF9}
+    .pnl-val{font-size:16px;font-weight:800}
+    .pnl-lbl{font-size:10px;color:#666;font-weight:600}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+    th{background:#F1F8E9;padding:7px 8px;text-align:left;font-weight:700;color:#2E7D32;font-size:10px;text-transform:uppercase}
+    td{padding:7px 8px;border-bottom:1px solid #E8F5E9;color:#333}
+    .stage-pill{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10px;font-weight:700;background:#E8F5E9;color:#2E7D32}
+    .rp-footer{text-align:center;font-size:10px;color:#999;margin-top:20px;padding-top:12px;border-top:1px solid #eee}
+    .report-actions{display:none}
+  </style></head><body>${content}</body></html>`;
+  const blob = new Blob([html], {type:'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'greenfield-farm-report.html';
+  a.click();
+}
+</script>
+{% endblock %}

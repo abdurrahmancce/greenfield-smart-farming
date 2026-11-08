@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
-{% block page_sub %}Welcome back! Here's what's happening on your farms today.{% endblock %}
+{% block page_title %}{{ 'ড্যাশবোর্ড' if is_bn else 'Dashboard' }}{% endblock %}
+{% block page_sub %}{{ 'স্বাগতম! আপনার খামারের আজকের আপডেট দেখুন।' if is_bn else "Welcome back! Here's what's happening on your farms today." }}{% endblock %}
 {% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
 
 {% block content %}
 <!-- Stat Cards -->
 <div class="stats-row">
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-tractor"></i></div><div class="stat-info"><h3>{{ total_farms }}</h3><p>Total Farms</p></div></div>
-  <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-seedling"></i></div><div class="stat-info"><h3>{{ total_crops }}</h3><p>Crop Varieties</p></div></div>
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-ruler-combined"></i></div><div class="stat-info"><h3>{{ total_area }} ac</h3><p>Total Area</p></div></div>
-  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-thermometer-half"></i></div><div class="stat-info"><h3>{{ weather.temperature }}°C</h3><p>{{ weather.city }} Temp</p></div></div>
-  <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-book-open"></i></div><div class="stat-info"><h3>{{ total_notes }}</h3><p>Farm Notes</p></div></div>
+  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-tractor"></i></div><div class="stat-info"><h3>{{ total_farms }}</h3><p>{{ 'মোট খামার' if is_bn else 'Total Farms' }}</p></div></div>
+  <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-seedling"></i></div><div class="stat-info"><h3>{{ total_crops }}</h3><p>{{ 'ফসলের ধরন' if is_bn else 'Crop Varieties' }}</p></div></div>
+  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-ruler-combined"></i></div><div class="stat-info"><h3>{{ total_area }} ac</h3><p>{{ 'মোট জমি' if is_bn else 'Total Area' }}</p></div></div>
+  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-thermometer-half"></i></div><div class="stat-info"><h3>{{ weather.temperature }}°C</h3><p>{{ weather.city }} {{ 'তাপমাত্রা' if is_bn else 'Temp' }}</p></div></div>
+  <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-book-open"></i></div><div class="stat-info"><h3>{{ total_notes }}</h3><p>{{ 'খামার নোট' if is_bn else 'Farm Notes' }}</p></div></div>
 </div>
 
 <div class="dash-grid">

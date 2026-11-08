@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Market Price Tracker{% endblock %}
+{% block page_title %}📊 Market Price Tracker{% endblock %}
+{% block page_sub %}Bangladesh crop market prices & selling advice — updated {{ updated }}{% endblock %}
+
+{% block head %}
+<style>
+.market-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.market-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;transition:transform .18s,box-shadow .18s}
+.market-card:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.1)}
+.price-row{display:flex;align-items:baseline;gap:4px;margin:10px 0 4px}
+.price-big{font-size:28px;font-weight:900;color:var(--text)}
+.price-unit{font-size:12px;color:var(--muted)}
+.trend-up{color:#2E7D32;font-size:13px;font-weight:700}
+.trend-down{color:#C62828;font-size:13px;font-weight:700}
+.trend-stable{color:#F57F17;font-size:13px;font-weight:700}
+.tip-box{background:var(--bg);border-radius:8px;padding:9px 12px;font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.5}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.filter-btn{padding:6px 14px;border-radius:99px;border:1.5px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;font-size:13px;font-weight:600;transition:all .18s}
+.filter-btn.active,.filter-btn:hover{background:var(--p-mid);color:#fff;border-color:var(--p-mid)}
+.disclaimer{background:#FFF8E1;border:1px solid #FFD54F;border-radius:10px;padding:10px 14px;font-size:12px;color:#795548;margin-bottom:16px;display:flex;gap:8px;align-items:flex-start}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="disclaimer">
+  <i class="fas fa-info-circle" style="color:#F57F17;margin-top:1px;flex-shrink:0"></i>
+  <span>Prices are indicative averages for Bangladesh wholesale markets. Actual prices may vary by region, quality, and season. Verify with local traders before selling.</span>
+</div>
+
+<div class="filter-bar">
+  <button class="filter-btn active" onclick="filterCrops('all',this)">All Crops</button>
+  <button class="filter-btn" onclick="filterCrops('up',this)">📈 Rising</button>
+  <button class="filter-btn" onclick="filterCrops('down',this)">📉 Falling</button>
+  <button class="filter-btn" onclick="filterCrops('stable',this)">➡️ Stable</button>
+</div>
+
+<div class="market-grid" id="marketGrid">
+  {% for crop, data in prices.items() %}
+  <div class="market-card" data-trend="{{ data.trend }}">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:15px;font-weight:700;color:var(--text)">{{ crop }}</div>
+      <span class="trend-{{ data.trend }}">
+        {% if data.trend == 'up' %}📈 Rising
+        {% elif data.trend == 'down' %}📉 Falling
+        {% else %}➡️ Stable{% endif %}
+      </span>
+    </div>
+    <div class="price-row">
+      <span class="price-big">৳{{ data.price }}</span>
+      <span class="price-unit">/ {{ data.unit }}</span>
+    </div>
+    <div class="tip-box">
+      <i class="fas fa-lightbulb" style="color:#F57F17"></i> {{ data.tip }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div style="margin-top:24px;text-align:center">
+  <div style="font-size:13px;color:var(--muted)">
+    <i class="fas fa-sync-alt"></i> Prices last updated: <strong>{{ updated }}</strong>
+    &nbsp;|&nbsp;
+    <i class="fas fa-map-marker-alt"></i> Source: Dhaka wholesale market averages
+  </div>
+</div>
+
+<script>
+function filterCrops(trend, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.market-card').forEach(card => {
+    card.style.display = (trend === 'all' || card.dataset.trend === trend) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

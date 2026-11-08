@@ -160,26 +160,49 @@
       <div class="brand-text"><h2>GreenField</h2><span>Smart Farming Platform</span></div>
     </div>
     <nav class="sidebar-nav">
-      <div class="nav-section">Main</div>
+      <div class="nav-section">{{ 'প্রধান' if is_bn else 'Main' }}</div>
       <a class="nav-link" href="{{ url_for('dashboard') }}">
-        <i class="fas fa-tachometer-alt"></i> Dashboard
-        <span style="font-size:10px;background:rgba(255,255,255,.15);padding:1px 6px;border-radius:99px;margin-left:auto">My Data</span>
+        <i class="fas fa-tachometer-alt"></i> {{ 'ড্যাশবোর্ড' if is_bn else 'Dashboard' }}
+        <span style="font-size:10px;background:rgba(255,255,255,.15);padding:1px 6px;border-radius:99px;margin-left:auto">{{ 'আমার' if is_bn else 'My Data' }}</span>
       </a>
       <a class="nav-link" href="{{ url_for('index') }}">
-        <i class="fas fa-home"></i> Home Page
+        <i class="fas fa-home"></i> {{ 'হোম পেজ' if is_bn else 'Home Page' }}
         <span style="font-size:10px;opacity:.4;margin-left:auto">Public</span>
       </a>
-      <div class="nav-section" style="margin-top:8px">Management</div>
-      <a class="nav-link" href="{{ url_for('farms') }}"><i class="fas fa-tractor"></i> Farm Management</a>
-      <a class="nav-link" href="{{ url_for('notes') }}"><i class="fas fa-book-open"></i> Farm Notes</a>
-      <div class="nav-section" style="margin-top:8px">Insights</div>
-      <a class="nav-link" href="{{ url_for('weather') }}"><i class="fas fa-cloud-sun"></i> Weather</a>
-      <a class="nav-link" href="{{ url_for('analytics') }}"><i class="fas fa-chart-line"></i> Analytics</a>
-      <a class="nav-link" href="{{ url_for('fertilizer') }}"><i class="fas fa-flask"></i> Fertilizer Calc</a>
-      <a class="nav-link" href="{{ url_for('disease_page') }}"><i class="fas fa-microscope"></i> Disease Detector</a>
+      <div class="nav-section" style="margin-top:8px">{{ 'ব্যবস্থাপনা' if is_bn else 'Management' }}</div>
+      <a class="nav-link" href="{{ url_for('farms') }}"><i class="fas fa-tractor"></i> {{ 'খামার ব্যবস্থাপনা' if is_bn else 'Farm Management' }}</a>
+      <a class="nav-link" href="{{ url_for('notes') }}"><i class="fas fa-book-open"></i> {{ 'খামার নোট' if is_bn else 'Farm Notes' }}</a>
+      <div class="nav-section" style="margin-top:8px">{{ 'খামার টুলস' if is_bn else 'Farm Tools' }}</div>
+      <a class="nav-link" href="{{ url_for('growth_page') }}"><i class="fas fa-seedling"></i> {{ 'ফসল ট্র্যাকার' if is_bn else 'Growth Tracker' }}</a>
+      <a class="nav-link" href="{{ url_for('irrigation_page') }}"><i class="fas fa-tint"></i> {{ 'সেচ লগ' if is_bn else 'Irrigation Log' }}</a>
+      <a class="nav-link" href="{{ url_for('expenses_page') }}"><i class="fas fa-coins"></i> {{ 'আয়-ব্যয় ট্র্যাকার' if is_bn else 'Expense Tracker' }}</a>
+      <div class="nav-section" style="margin-top:8px">{{ 'বাজার ও পরিকল্পনা' if is_bn else 'Market & Planning' }}</div>
+      <a class="nav-link" href="{{ url_for('market_page') }}"><i class="fas fa-chart-bar"></i> {{ 'বাজার দর' if is_bn else 'Market Prices' }}</a>
+      <a class="nav-link" href="{{ url_for('calendar_page') }}"><i class="fas fa-calendar-alt"></i> {{ 'ফসল ক্যালেন্ডার' if is_bn else 'Crop Calendar' }}</a>
+      <a class="nav-link" href="{{ url_for('report_page') }}"><i class="fas fa-file-pdf"></i> {{ 'খামার রিপোর্ট' if is_bn else 'Farm Report' }}</a>
+      <div class="nav-section" style="margin-top:8px">{{ 'বিশ্লেষণ' if is_bn else 'Insights' }}</div>
+      <a class="nav-link" href="{{ url_for('weather') }}"><i class="fas fa-cloud-sun"></i> {{ 'আবহাওয়া' if is_bn else 'Weather' }}</a>
+      <a class="nav-link" href="{{ url_for('analytics') }}"><i class="fas fa-chart-line"></i> {{ 'বিশ্লেষণ' if is_bn else 'Analytics' }}</a>
+      <a class="nav-link" href="{{ url_for('fertilizer') }}"><i class="fas fa-flask"></i> {{ 'সার হিসাব' if is_bn else 'Fertilizer Calc' }}</a>
+      <a class="nav-link" href="{{ url_for('disease_page') }}"><i class="fas fa-microscope"></i> {{ 'রোগ সনাক্তকারী' if is_bn else 'Disease Detector' }}</a>
       {% if current_user %}
       <div class="nav-section" style="margin-top:8px">Account</div>
       <a class="nav-link" href="{{ url_for('profile') }}"><i class="fas fa-user-circle"></i> My Profile</a>
+      <!-- Language toggle -->
+      <div style="display:flex;gap:6px;padding:6px 12px 0">
+        <a href="{{ url_for('set_language', lang='en') }}"
+           style="flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:12px;font-weight:700;
+                  background:{{ 'rgba(255,255,255,.18)' if session.get('lang','en')=='en' else 'rgba(255,255,255,.06)' }};
+                  color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.15)">
+          🇬🇧 EN
+        </a>
+        <a href="{{ url_for('set_language', lang='bn') }}"
+           style="flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:12px;font-weight:700;
+                  background:{{ 'rgba(255,255,255,.18)' if session.get('lang','en')=='bn' else 'rgba(255,255,255,.06)' }};
+                  color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.15)">
+          🇧🇩 বাংলা
+        </a>
+      </div>
       <a class="nav-link" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
       {% endif %}
       <!-- Install App button — hidden until the browser confirms the app is installable -->

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Crop Growth Tracker{% endblock %}
+{% block page_title %}🌱 Crop Growth Tracker{% endblock %}
+{% block page_sub %}Track planting dates, growth stages & harvest timeline{% endblock %}
+
+{% block head %}
+<style>
+.growth-grid{display:grid;grid-template-columns:380px 1fr;gap:18px}
+.stage-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700}
+.stage-Seedling{background:#E8F5E9;color:#2E7D32}
+.stage-Vegetative{background:#E3F2FD;color:#1565C0}
+.stage-Flowering{background:#FFF3E0;color:#E65100}
+.stage-Fruiting{background:#FCE4EC;color:#880E4F}
+.stage-Ripening{background:#FFF8E1;color:#F57F17}
+.stage-Harvested{background:#ECEFF1;color:#455A64}
+.progress-bar-wrap{background:var(--border);border-radius:99px;height:8px;margin:6px 0}
+.progress-bar-fill{height:8px;border-radius:99px;background:linear-gradient(90deg,#43A047,#A5D6A7);transition:width .3s}
+.crop-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.crop-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative}
+.crop-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.days-pill{font-size:11px;background:var(--bg);border:1px solid var(--border);padding:3px 9px;border-radius:99px;color:var(--muted)}
+.edit-row{display:flex;gap:8px;margin-top:12px}
+.stages-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.stage-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="growth-grid">
+  <!-- Add form -->
+  <div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> Add Growth Record</h3></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_growth') }}">
+          <div class="form-group">
+            <label class="form-label">Farm</label>
+            <select name="farm_id" class="form-control" required>
+              <option value="">— Select Farm —</option>
+              {% for f in farms %}
+              <option value="{{ f.id }}">{{ f.farm_name }} ({{ f.crop_type }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr">
+            <div class="form-group">
+              <label class="form-label">Planting Date</label>
+              <input type="date" name="planting_date" class="form-control" value="{{ today }}" required/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Expected Days to Harvest</label>
+              <input type="number" name="expected_days" class="form-control" value="90" min="10" max="365"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Current Growth Stage</label>
+            <select name="growth_stage" class="form-control">
+              {% for s in ["Seedling","Vegetative","Flowering","Fruiting","Ripening","Harvested"] %}
+              <option value="{{ s }}">{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes (optional)</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Any observations…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%">
+            <i class="fas fa-seedling"></i> Add Record
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Stage guide -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-info-circle"></i> Growth Stage Guide</h3></div>
+      <div class="card-body" style="padding:14px">
+        {% for stage, color in [("Seedling","#2E7D32"),("Vegetative","#1565C0"),("Flowering","#E65100"),("Fruiting","#880E4F"),("Ripening","#F57F17"),("Harvested","#455A64")] %}
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div class="stage-dot" style="background:{{ color }}"></div>
+          <strong style="font-size:13px">{{ stage }}</strong>
+          <span style="font-size:12px;color:var(--muted)">
+            {% if stage=="Seedling" %}First 2 weeks after planting
+            {% elif stage=="Vegetative" %}Leaf & stem growth phase
+            {% elif stage=="Flowering" %}Blossom & pollination stage
+            {% elif stage=="Fruiting" %}Fruit/grain development
+            {% elif stage=="Ripening" %}Final maturation before harvest
+            {% else %}Crop harvested ✅{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Records -->
+  <div>
+    {% if records %}
+    <div class="crop-cards">
+      {% for r in records %}
+      {% set planted = r.planting_date %}
+      {% set today_str = today %}
+      <div class="crop-card">
+        <div class="crop-card-header">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--text)">{{ r.farm_name }}</div>
+            <div style="font-size:12px;color:var(--muted)">{{ r.crop_type or '—' }}</div>
+          </div>
+          <span class="stage-badge stage-{{ r.growth_stage }}">
+            <i class="fas fa-circle" style="font-size:7px"></i> {{ r.growth_stage }}
+          </span>
+        </div>
+
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
+          <i class="fas fa-calendar-alt" style="color:var(--p-light)"></i>
+          Planted: <strong>{{ r.planting_date }}</strong>
+          &nbsp;|&nbsp;
+          <i class="fas fa-scissors" style="color:#E65100"></i>
+          Harvest: <strong>{{ r.harvest_date }}</strong>
+        </div>
+
+        <!-- Progress bar: days elapsed / expected_days -->
+        {% set elapsed_approx = ((today|replace('-','') | int) - (r.planting_date|replace('-','') | int)) %}
+        {% set pct = [[(elapsed_approx // 100 * 3), 0]|max, 100]|min %}
+        <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
+          <span>Progress</span>
+          <span>{{ r.expected_days }} days expected</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:{{ [(r.growth_stage == 'Harvested') | int * 100, [25 if r.growth_stage=='Seedling' else 50 if r.growth_stage=='Vegetative' else 65 if r.growth_stage=='Flowering' else 80 if r.growth_stage=='Fruiting' else 92 if r.growth_stage=='Ripening' else 100, 0]|max]|max }}%"></div>
+        </div>
+        <span class="days-pill">
+          <i class="fas fa-clock"></i>
+          {{ r.expected_days }} days | Planted {{ r.planting_date }}
+        </span>
+
+        {% if r.notes %}
+        <div style="margin-top:8px;font-size:12px;color:var(--muted);background:var(--bg);border-radius:6px;padding:7px 10px">
+          <i class="fas fa-sticky-note" style="color:var(--p-light)"></i> {{ r.notes }}
+        </div>
+        {% endif %}
+
+        <!-- Update stage -->
+        <details style="margin-top:10px">
+          <summary style="font-size:12px;color:var(--p-light);cursor:pointer;font-weight:600">
+            <i class="fas fa-edit"></i> Update Stage
+          </summary>
+          <form method="POST" action="{{ url_for('update_growth', gid=r.id) }}" style="margin-top:8px">
+            <div class="edit-row">
+              <select name="growth_stage" class="form-control" style="font-size:12px;padding:6px 10px">
+                {% for s in ["Seedling","Vegetative","Flowering","Fruiting","Ripening","Harvested"] %}
+                <option value="{{ s }}" {{ 'selected' if s==r.growth_stage }}>{{ s }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" name="notes" class="form-control" style="font-size:12px;padding:6px 10px"
+                     value="{{ r.notes }}" placeholder="Notes…"/>
+              <button type="submit" class="btn btn-primary" style="padding:6px 12px;font-size:12px;white-space:nowrap">
+                <i class="fas fa-check"></i>
+              </button>
+            </div>
+          </form>
+        </details>
+
+        <!-- Delete -->
+        <form method="POST" action="{{ url_for('delete_growth', gid=r.id) }}"
+              onsubmit="return confirm('Delete this record?')" style="margin-top:6px">
+          <button type="submit" class="btn" style="font-size:11px;color:#EF5350;background:none;border:none;padding:0;cursor:pointer">
+            <i class="fas fa-trash"></i> Delete
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="card" style="text-align:center;padding:48px 24px">
+      <div style="font-size:48px;margin-bottom:14px">🌱</div>
+      <h3 style="color:var(--text);margin-bottom:8px">No growth records yet</h3>
+      <p style="color:var(--muted);font-size:14px">Add your first crop tracking record using the form on the left.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
