@@ -358,8 +358,8 @@
 function submitPhoto(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
-  if (file.size > 2 * 1024 * 1024) {
-    alert('Image too large. Maximum size is 2 MB.');
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Image too large. Maximum size is 5 MB.');
     return;
   }
   // Show preview instantly

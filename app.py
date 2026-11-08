@@ -765,9 +765,9 @@ def profile():
                 if photo.content_type not in allowed:
                     flash("Only JPG, PNG, GIF or WebP images allowed.", "error")
                 else:
-                    photo_bytes = photo.read(2 * 1024 * 1024)  # max 2MB
-                    if len(photo_bytes) >= 2 * 1024 * 1024:
-                        flash("Image too large. Maximum size is 2 MB.", "error")
+                    photo_bytes = photo.read(5 * 1024 * 1024)  # max 5MB
+                    if len(photo_bytes) >= 5 * 1024 * 1024:
+                        flash("Image too large. Maximum size is 5 MB.", "error")
                     else:
                         b64 = base64.b64encode(photo_bytes).decode("utf-8")
                         data_url = f"data:{photo.content_type};base64,{b64}"
