@@ -1088,3 +1088,78 @@ tbody tr:hover { background: linear-gradient(90deg,rgba(67,160,71,.07),rgba(67,1
 [data-theme="dark"] .topbar {
   box-shadow: 0 2px 20px rgba(0,0,0,.3);
 }
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE FIX v3 — Two-column layouts & tables
+═══════════════════════════════════════════════ */
+
+/* All two-column form+list layouts → stack on mobile */
+@media (max-width: 768px) {
+  .growth-grid,
+  .irr-layout,
+  .exp-layout,
+  .fert-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Report tables — full horizontal scroll with visible scrollbar */
+  .rp-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+  .rp-table {
+    min-width: 520px;
+  }
+
+  /* Farm report PLN box */
+  .pnl-box {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Fertilizer NPK reference table */
+  .npk-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 10px;
+  }
+
+  /* General table fix — ensure all tables can scroll */
+  .card-body table,
+  .card table {
+    min-width: 460px;
+  }
+  .card-body,
+  .card {
+    overflow-x: auto;
+  }
+
+  /* Fertilizer npk-grid */
+  .npk-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* pnl-row on expense/report */
+  .pnl-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* stat-row on irrigation */
+  .stat-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .pnl-row {
+    grid-template-columns: 1fr !important;
+  }
+  .npk-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

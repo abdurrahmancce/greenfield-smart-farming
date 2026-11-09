@@ -51,6 +51,16 @@
 .rp-table tr:last-child td{border-bottom:none}
 .stage-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;background:#E8F5E9;color:#2E7D32}
 .rp-footer{text-align:center;font-size:11px;color:#999;margin-top:28px;padding-top:14px;border-top:1px solid #eee}
+.rp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;margin-bottom:4px}
+@media(max-width:600px){
+  .pnl-box{grid-template-columns:1fr 1fr!important;gap:8px!important}
+  .rp-farm-grid{grid-template-columns:1fr!important}
+  .pnl-val{font-size:15px}
+  .rp-table{min-width:480px}
+}
+@media(max-width:400px){
+  .pnl-box{grid-template-columns:1fr!important}
+}
 </style>
 {% endblock %}
 
@@ -126,6 +136,7 @@
       </div>
 
       {% if expenses %}
+      <div class="rp-table-wrap">
       <table class="rp-table">
         <thead>
           <tr><th>Date</th><th>Farm</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right">Amount (৳)</th></tr>
@@ -147,6 +158,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}
       <p style="color:#999;font-size:13px">No expense records found.</p>
       {% endif %}
@@ -156,6 +168,7 @@
     <div class="rp-section">
       <div class="rp-section-title"><i class="fas fa-seedling"></i> Crop Growth Status</div>
       {% if growth %}
+      <div class="rp-table-wrap">
       <table class="rp-table">
         <thead>
           <tr><th>Farm</th><th>Crop</th><th>Planted</th><th>Expected Harvest</th><th>Stage</th><th>Notes</th></tr>
@@ -173,6 +186,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}
       <p style="color:#999;font-size:13px">No growth records found.</p>
       {% endif %}
@@ -182,6 +196,7 @@
     <div class="rp-section">
       <div class="rp-section-title"><i class="fas fa-tint"></i> Irrigation Log (Recent {{ irrigations|length }})</div>
       {% if irrigations %}
+      <div class="rp-table-wrap">
       <table class="rp-table">
         <thead>
           <tr><th>Date</th><th>Farm</th><th>Method</th><th>Water (L)</th><th>Duration</th><th>Notes</th></tr>
@@ -199,6 +214,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}
       <p style="color:#999;font-size:13px">No irrigation records found.</p>
       {% endif %}
