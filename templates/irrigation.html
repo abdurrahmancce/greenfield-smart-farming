@@ -6,6 +6,15 @@
 {% block head %}
 <style>
 .irr-layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+.irr-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
+.irr-table-wrap table{min-width:520px;width:100%;border-collapse:collapse}
+@media(max-width:900px){
+  .irr-layout{grid-template-columns:1fr!important;gap:14px}
+  .stat-row{grid-template-columns:1fr 1fr!important}
+  .form-row{grid-template-columns:1fr!important}
+  .form-control{width:100%;box-sizing:border-box}
+  .btn[type="submit"]{width:100%;box-sizing:border-box}
+}
 .method-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:700}
 .method-Manual{background:#E8F5E9;color:#2E7D32}
 .method-Drip{background:#E3F2FD;color:#1565C0}
@@ -123,8 +132,8 @@
       <div class="card-header">
         <h3 class="card-title"><i class="fas fa-history"></i> Recent Logs</h3>
       </div>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse">
+      <div class="irr-table-wrap">
+        <table>
           <thead>
             <tr style="background:var(--bg)">
               <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Date</th>

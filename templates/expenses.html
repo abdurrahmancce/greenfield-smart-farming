@@ -6,6 +6,18 @@
 {% block head %}
 <style>
 .exp-layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+.exp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
+.exp-table-wrap table{min-width:540px;width:100%;border-collapse:collapse}
+@media(max-width:900px){
+  .exp-layout{grid-template-columns:1fr!important;gap:14px}
+  .pnl-row{grid-template-columns:1fr 1fr!important}
+  .form-row{grid-template-columns:1fr!important}
+  .form-control{width:100%;box-sizing:border-box}
+  .btn[type="submit"]{width:100%;box-sizing:border-box}
+}
+@media(max-width:420px){
+  .pnl-row{grid-template-columns:1fr!important}
+}
 .pnl-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 .pnl-card{border-radius:12px;padding:16px;text-align:center}
 .pnl-income{background:#E8F5E9;border:1px solid #A5D6A7}
@@ -124,8 +136,8 @@
       <div class="card-header">
         <h3 class="card-title"><i class="fas fa-list"></i> Transactions ({{ logs|length }})</h3>
       </div>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse">
+      <div class="exp-table-wrap">
+        <table>
           <thead>
             <tr style="background:var(--bg)">
               <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Date</th>

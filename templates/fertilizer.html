@@ -4,7 +4,19 @@
 {% block page_sub %}Calculate N-P-K requirements. Results are saved and editable.{% endblock %}
 
 {% block content %}
-<div class="fert-grid" style="display:grid;grid-template-columns:1fr 1.6fr;gap:20px;align-items:start">
+<style>
+.fert-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:20px;align-items:start}
+@media(max-width:900px){
+  .fert-grid{grid-template-columns:1fr!important;gap:14px}
+  .form-control{width:100%;box-sizing:border-box}
+  .btn[type="submit"]{width:100%;box-sizing:border-box}
+  .npk-grid{grid-template-columns:repeat(2,1fr)!important}
+}
+@media(max-width:420px){
+  .npk-grid{grid-template-columns:1fr!important}
+}
+</style>
+<div class="fert-grid">
 
   <!-- LEFT: Calculator form -->
   <div>

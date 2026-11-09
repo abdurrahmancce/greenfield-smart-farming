@@ -6,6 +6,13 @@
 {% block head %}
 <style>
 .growth-grid{display:grid;grid-template-columns:380px 1fr;gap:18px}
+@media(max-width:900px){
+  .growth-grid{grid-template-columns:1fr!important;gap:14px}
+  .form-row{grid-template-columns:1fr!important}
+  .form-control{width:100%;box-sizing:border-box}
+  .btn[type="submit"]{width:100%;box-sizing:border-box}
+  .crop-cards{grid-template-columns:1fr!important}
+}
 .stage-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700}
 .stage-Seedling{background:#E8F5E9;color:#2E7D32}
 .stage-Vegetative{background:#E3F2FD;color:#1565C0}
