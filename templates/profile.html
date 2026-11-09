@@ -11,69 +11,98 @@
   <!-- Avatar + Stats -->
   <div style="display:flex;flex-direction:column;gap:16px">
 
-    <div class="card">
-      <div class="card-body" style="text-align:center;padding:28px 20px">
-        <!-- Avatar: photo if set, else colour circle -->
-        <div style="position:relative;width:90px;margin:0 auto 14px;cursor:pointer" onclick="document.getElementById('photoInput').click()" title="Click to change photo">
-          {% if user.avatar_photo %}
-          <img id="avatarImg" src="{{ user.avatar_photo }}" alt="Profile photo"
-               style="width:90px;height:90px;border-radius:50%;object-fit:cover;box-shadow:0 4px 16px rgba(46,125,50,.3);display:block"/>
-          <div id="avatarCircle" style="display:none;width:90px;height:90px;border-radius:50%;background:{{ user.avatar_color or '#2E7D32' }};color:#fff;font-size:32px;font-weight:800;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(46,125,50,.3)">{{ user.name[0].upper() }}</div>
-          {% else %}
-          <div id="avatarCircle" style="
-            width:90px;height:90px;border-radius:50%;
-            background:{{ user.avatar_color or '#2E7D32' }};
-            color:#fff;font-size:32px;font-weight:800;
-            display:flex;align-items:center;justify-content:center;
-            box-shadow:0 4px 16px rgba(46,125,50,.3);
-            transition:transform .2s ease">
-            {{ user.name[0].upper() }}
+    <div class="card" style="overflow:hidden">
+      <!-- Green header banner -->
+      <div style="height:72px;background:linear-gradient(135deg,#1B5E20,#2E7D32,#43A047,#8BC34A);position:relative;overflow:hidden">
+        <div style="position:absolute;right:-20px;top:-20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.07)"></div>
+        <div style="position:absolute;left:20px;bottom:-30px;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.05)"></div>
+      </div>
+
+      <div style="text-align:center;padding:0 20px 24px;position:relative">
+        <!-- Avatar ring — sits half on banner half on card -->
+        <div style="margin-top:-48px;margin-bottom:14px;position:relative;display:inline-block">
+          <div style="width:96px;height:96px;border-radius:50%;border:4px solid var(--bg-card);box-shadow:0 6px 24px rgba(46,125,50,.3);overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;display:inline-block"
+               id="avatarRing"
+               onclick="{% if user.avatar_photo %}openPhotoModal('{{ user.avatar_photo }}'){% else %}document.getElementById('photoInput').click(){% endif %}"
+               title="{% if user.avatar_photo %}Click to view photo{% else %}Click to upload photo{% endif %}">
+            {% if user.avatar_photo %}
+            <img id="avatarImg" src="{{ user.avatar_photo }}" alt="Profile photo"
+                 style="width:100%;height:100%;object-fit:cover;display:block"/>
+            <div id="avatarCircle" style="display:none;width:100%;height:100%;background:{{ user.avatar_color or '#2E7D32' }};color:#fff;font-size:36px;font-weight:800;align-items:center;justify-content:center"></div>
+            {% else %}
+            <div id="avatarCircle" style="width:100%;height:100%;background:{{ user.avatar_color or '#2E7D32' }};color:#fff;font-size:36px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ user.name[0].upper() }}</div>
+            <img id="avatarImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover"/>
+            {% endif %}
           </div>
-          <img id="avatarImg" src="" alt="" style="display:none;width:90px;height:90px;border-radius:50%;object-fit:cover;box-shadow:0 4px 16px rgba(46,125,50,.3)"/>
-          {% endif %}
-          <!-- Camera overlay -->
-          <div style="position:absolute;bottom:0;right:0;width:28px;height:28px;border-radius:50%;background:#2E7D32;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.2)">
+          <!-- Camera badge -->
+          <div onclick="document.getElementById('photoInput').click()"
+               style="position:absolute;bottom:2px;right:2px;width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E7D32,#43A047);display:flex;align-items:center;justify-content:center;border:2.5px solid var(--bg-card);box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer;transition:transform .2s"
+               onmouseenter="this.style.transform='scale(1.15)'" onmouseleave="this.style.transform='scale(1)'">
             <i class="fas fa-camera" style="color:#fff;font-size:11px"></i>
           </div>
         </div>
+
         <!-- Hidden photo upload form -->
         <form id="photoForm" method="POST" enctype="multipart/form-data" style="display:none">
           <input type="hidden" name="action" value="upload_photo">
           <input type="file" id="photoInput" name="profile_photo" accept="image/*" onchange="submitPhoto(this)">
         </form>
-        {% if user.avatar_photo %}
-        <form method="POST" style="display:inline">
-          <input type="hidden" name="action" value="remove_photo">
-          <button type="submit" style="background:none;border:none;color:#ef5350;font-size:11px;cursor:pointer;padding:0 0 10px 0">
-            <i class="fas fa-trash-alt"></i> Remove photo
-          </button>
-        </form>
-        {% endif %}
-        <div style="font-size:18px;font-weight:800;color:var(--text)">{{ user.name }}</div>
+
+        <div style="font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px">{{ user.name }}</div>
         <div style="font-size:13px;color:var(--muted);margin-top:3px">{{ user.email }}</div>
-        {% if user.phone %}
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">
-          <i class="fas fa-phone" style="color:var(--p-light)"></i> {{ user.phone }}
+
+        <div style="display:flex;justify-content:center;gap:14px;margin-top:10px;flex-wrap:wrap">
+          {% if user.phone %}
+          <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)">
+            <i class="fas fa-phone" style="color:var(--p-light);font-size:11px"></i> {{ user.phone }}
+          </div>
+          {% endif %}
+          {% if user.location %}
+          <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)">
+            <i class="fas fa-map-marker-alt" style="color:var(--p-light);font-size:11px"></i> {{ user.location }}
+          </div>
+          {% endif %}
         </div>
-        {% endif %}
-        {% if user.location %}
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">
-          <i class="fas fa-map-marker-alt" style="color:var(--p-light)"></i> {{ user.location }}
+
+        <div style="margin-top:12px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">
+          <span class="badge badge-green" style="font-size:11.5px"><i class="fas fa-seedling"></i> {{ user.role|capitalize }}</span>
+          {% if user.farm_name %}
+          <span class="badge badge-blue" style="font-size:11.5px"><i class="fas fa-tractor"></i> {{ user.farm_name }}</span>
+          {% endif %}
         </div>
-        {% endif %}
-        <span class="badge badge-green" style="margin-top:10px;font-size:12px">
-          <i class="fas fa-seedling"></i> {{ user.role|capitalize }}
-        </span>
+
         {% if user.bio %}
-        <div style="margin-top:12px;font-size:12.5px;color:var(--muted);font-style:italic;
-             background:var(--bg);border-radius:8px;padding:10px;line-height:1.5">
+        <div style="margin-top:14px;font-size:12.5px;color:var(--muted);font-style:italic;background:var(--bg);border-radius:10px;padding:11px 14px;line-height:1.55;border-left:3px solid var(--p-pale)">
           "{{ user.bio }}"
         </div>
         {% endif %}
+
         <div style="margin-top:12px;font-size:11px;color:var(--muted)">
-          <i class="fas fa-calendar-alt"></i>
+          <i class="fas fa-calendar-alt" style="color:var(--p-light)"></i>
           Member since {{ user.created_at[:10] }}
         </div>
+
+        {% if user.avatar_photo %}
+        <div style="margin-top:10px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">
+          <button onclick="openPhotoModal('{{ user.avatar_photo }}')" type="button"
+                  style="background:linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08));border:1.5px solid var(--border);color:var(--p-mid);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s"
+                  onmouseenter="this.style.background='linear-gradient(135deg,rgba(46,125,50,.2),rgba(139,195,74,.12))'" onmouseleave="this.style.background='linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08))'">
+            <i class="fas fa-search-plus"></i> View Photo
+          </button>
+          <form method="POST" style="display:inline">
+            <input type="hidden" name="action" value="remove_photo">
+            <button type="submit" style="background:rgba(239,83,80,.08);border:1.5px solid #FFCDD2;color:#ef5350;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s">
+              <i class="fas fa-trash-alt"></i> Remove
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <button onclick="document.getElementById('photoInput').click()" type="button"
+                style="margin-top:10px;background:linear-gradient(135deg,#2E7D32,#43A047);color:#fff;border:none;border-radius:9px;padding:8px 18px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(46,125,50,.35);transition:all .2s"
+                onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform='translateY(0)'">
+          <i class="fas fa-camera"></i> Upload Photo
+        </button>
+        {% endif %}
       </div>
     </div>
 

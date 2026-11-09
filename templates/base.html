@@ -1,268 +1,481 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Apply saved theme before any CSS loads — prevents a white/light flash on dark mode -->
   <script>
     (function() {
       var saved = localStorage.getItem('gf-theme');
-      if (saved === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=5.0"/>
   <title>{% block title %}GreenField{% endblock %} — Smart Farming</title>
-  <!-- PWA -->
   <link rel="manifest" href="/static/manifest.json"/>
-  <meta name="theme-color" content="#2E7D32"/>
+  <meta name="theme-color" content="#1B5E20"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="GreenField"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <!-- Icons — favicon + iOS home-screen icon (iOS ignores manifest.json icons) -->
   <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
   <link rel="icon" type="image/png" sizes="96x96"  href="/static/icons/icon-96.png"/>
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
   <style>
-    /* User dropdown */
-    .user-menu{position:relative}
-    .user-btn{display:flex;align-items:center;gap:9px;background:var(--bg);
-      border:1.5px solid var(--border);border-radius:99px;
-      padding:5px 13px 5px 6px;cursor:pointer;transition:all .2s;font-size:13px;font-weight:600;color:var(--text)}
-    .user-btn:hover{background:#E8F5E9;border-color:var(--p-pale)}
-    .user-avatar{width:30px;height:30px;border-radius:50%;
-      background:linear-gradient(135deg,var(--p-mid),var(--p-light));
-      display:flex;align-items:center;justify-content:center;
-      font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
-    .user-dropdown{position:absolute;top:calc(100% + 8px);right:0;
-      background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);
-      box-shadow:0 8px 32px rgba(0,0,0,.14);min-width:200px;
-      z-index:300;overflow:hidden;display:none;animation:dropIn .18s ease}
-    @keyframes dropIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-    .user-menu.open .user-dropdown{display:block}
-    .ud-head{padding:14px 16px;border-bottom:1px solid var(--border);background:var(--bg)}
-    .ud-head strong{display:block;font-size:13.5px;color:var(--text)}
-    .ud-head span{font-size:11.5px;color:var(--muted)}
-    .ud-item{display:flex;align-items:center;gap:10px;padding:10px 16px;
-      font-size:13px;font-weight:500;color:var(--text);transition:background .15s;cursor:pointer}
-    .ud-item:hover{background:var(--bg)}
-    .ud-item i{width:15px;text-align:center;color:var(--p-light);font-size:13px}
-    .ud-item.danger{color:#EF5350}
-    .ud-item.danger i{color:#EF5350}
-    [data-theme="dark"] .ud-item.danger:hover{background:rgba(239,83,80,.12)}
-    [data-theme="light"] .ud-item.danger:hover,
-    .ud-item.danger:hover{background:#FEF2F2}
-    .ud-divider{height:1px;background:var(--border);margin:4px 0}
+  /* ══════════════════════════════════════════════
+     BASE.HTML INLINE — UI polish, photo, responsive
+  ══════════════════════════════════════════════ */
 
-    /* ── Mobile PWA safe area fixes ─────────────────────────── */
-    /* The topbar is sticky at top:0, so it must reserve real space
-       for the device's notch/status bar — not just push its own
-       content down with padding, or the bar behind it stays
-       transparent/white and the title text still sits too close
-       to the clock/battery icons. */
+  /* ── Avatar helper: used in topbar, sidebar, dropdown ── */
+  .gf-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 800; color: #fff;
+    overflow: hidden; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,.25);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .gf-avatar img {
+    width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+    display: block; cursor: pointer;
+  }
+  .gf-avatar:hover { transform: scale(1.06); box-shadow: 0 0 0 3px rgba(67,160,71,.35); }
+
+  /* ── Photo preview modal ── */
+  #photoModal {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,.78); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center;
+    animation: fadeIn .2s ease;
+  }
+  #photoModal.show { display: flex; }
+  #photoModal img {
+    max-width: min(420px, 90vw); max-height: 90vh;
+    border-radius: 20px; border: 3px solid rgba(255,255,255,.18);
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
+    animation: popIn .22s cubic-bezier(.34,1.56,.64,1);
+  }
+  #photoModal .pm-close {
+    position: absolute; top: 20px; right: 24px;
+    color: #fff; font-size: 32px; cursor: pointer; opacity: .7;
+    transition: opacity .15s, transform .15s; line-height: 1;
+    background: none; border: none;
+  }
+  #photoModal .pm-close:hover { opacity: 1; transform: rotate(90deg) scale(1.1); }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(.82); }
+    to   { opacity: 1; transform: scale(1);   }
+  }
+
+  /* ── Topbar restyle ── */
+  .topbar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 12px rgba(0,0,0,.06);
+    position: sticky; top: 0; z-index: 200;
+    padding: calc(env(safe-area-inset-top,0px) + 10px) 28px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: nowrap; min-height: 64px;
+  }
+  .topbar-title h1 {
+    font-size: 17px; font-weight: 800; color: var(--p);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .topbar-title p { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+  /* ── User button – shows photo if available ── */
+  .user-menu { position: relative; }
+  .user-btn {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 99px; padding: 4px 12px 4px 4px;
+    cursor: pointer; transition: all .2s;
+    font-size: 13px; font-weight: 600; color: var(--text);
+  }
+  .user-btn:hover { background: #E8F5E9; border-color: var(--p-pale); box-shadow: 0 2px 10px rgba(46,125,50,.15); }
+  .user-btn .uname { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user-btn .chevron { font-size: 10px; color: var(--muted); transition: transform .2s; }
+  .user-menu.open .chevron { transform: rotate(180deg); }
+
+  /* Dropdown */
+  .user-dropdown {
+    position: absolute; top: calc(100% + 10px); right: 0;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,.18);
+    min-width: 220px; z-index: 400; overflow: hidden;
+    display: none; animation: dropIn .18s ease;
+  }
+  @keyframes dropIn { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+  .user-menu.open .user-dropdown { display: block; }
+
+  .ud-head {
+    padding: 16px 18px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg,rgba(46,125,50,.07),transparent);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .ud-head .ud-photo {
+    width: 48px; height: 48px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    border: 2.5px solid var(--p-pale);
+  }
+  .ud-head .ud-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .ud-head .ud-photo-init {
+    width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; color: #fff;
+    border: 2.5px solid rgba(255,255,255,.3);
+  }
+  .ud-info strong { display: block; font-size: 14px; color: var(--text); font-weight: 700; }
+  .ud-info span   { font-size: 11.5px; color: var(--muted); }
+
+  .ud-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 18px; font-size: 13px; font-weight: 500;
+    color: var(--text); transition: background .15s; cursor: pointer;
+  }
+  .ud-item:hover { background: var(--bg); }
+  .ud-item i { width: 16px; text-align: center; color: var(--p-light); font-size: 13px; }
+  .ud-item.danger { color: #EF5350; }
+  .ud-item.danger i { color: #EF5350; }
+  .ud-item.danger:hover { background: #FEF2F2; }
+  [data-theme="dark"] .ud-item.danger:hover { background: rgba(239,83,80,.12); }
+  .ud-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── Sidebar bottom user chip — with photo ── */
+  .sb-user-chip {
+    padding: 14px 16px; border-top: 1px solid rgba(255,255,255,.07);
+  }
+  .sb-user-link {
+    display: flex; align-items: center; gap: 11px;
+    color: #fff; opacity: .82; transition: opacity .2s;
+    border-radius: 10px; padding: 6px 8px;
+  }
+  .sb-user-link:hover { opacity: 1; background: rgba(255,255,255,.07); }
+  .sb-user-photo {
+    width: 38px; height: 38px; border-radius: 50%;
+    overflow: hidden; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,.25);
+  }
+  .sb-user-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sb-user-init {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,.25);
+  }
+  .sb-user-info { min-width: 0; }
+  .sb-user-name  { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sb-user-email { font-size: 10.5px; opacity: .5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Sidebar brand pill enhancement ── */
+  .sidebar-brand { padding: 20px 16px 16px; }
+  .brand-logo {
+    background: linear-gradient(135deg, #2E7D32, #66BB6A);
+    box-shadow: 0 4px 16px rgba(46,125,50,.5);
+  }
+  .brand-text h2 { letter-spacing: -.4px; font-size: 15.5px; }
+
+  /* ── Nav active line ── */
+  .nav-link.active {
+    background: linear-gradient(90deg,rgba(102,187,106,.22),rgba(102,187,106,.06));
+    border-left: 3px solid #81C784;
+    padding-left: 9px;
+  }
+
+  /* ── Topbar date chip ── */
+  .topbar-chip {
+    display: flex; align-items: center; gap: 7px;
+    background: linear-gradient(135deg,rgba(46,125,50,.08),rgba(139,195,74,.06));
+    border: 1.5px solid rgba(46,125,50,.2);
+    border-radius: 99px; padding: 6px 14px;
+    font-size: 12px; color: var(--p); font-weight: 600;
+  }
+  .topbar-chip i { color: var(--p-light); }
+
+  /* ── Theme toggle ── */
+  .theme-toggle {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: var(--bg); border: 1.5px solid var(--border);
+    color: var(--p-mid); cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s;
+  }
+  .theme-toggle:hover { background: #E8F5E9; transform: rotate(15deg); }
+
+  /* ── Hamburger ── */
+  .hamburger {
+    display: none; background: var(--bg);
+    border: 1.5px solid var(--border); border-radius: 10px;
+    width: 38px; height: 38px; cursor: pointer; font-size: 18px;
+    color: var(--p-mid); align-items: center; justify-content: center;
+    transition: all .2s; flex-shrink: 0;
+  }
+  .hamburger:hover { background: #E8F5E9; }
+
+  /* ── Flash messages ── */
+  .flash-wrap {
+    position: fixed;
+    top: calc(env(safe-area-inset-top,0px) + 72px);
+    right: 20px; z-index: 999;
+    display: flex; flex-direction: column; gap: 9px; max-width: 360px;
+  }
+  .flash {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; border-radius: 12px;
+    font-size: 13.5px; font-weight: 500;
+    box-shadow: 0 8px 24px rgba(0,0,0,.14);
+    animation: slideIn .28s ease;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(36px); } to { opacity:1; transform:translateX(0); } }
+  .flash.success { background: #ECFDF5; color: #065F46; border-left: 4px solid #10B981; }
+  .flash.error   { background: #FEF2F2; color: #991B1B; border-left: 4px solid #EF4444; }
+  .flash i { font-size: 16px; flex-shrink: 0; }
+  .flash span { flex: 1; }
+  .flash-close { margin-left: auto; cursor: pointer; opacity: .5; background: none; border: none; font-size: 20px; line-height: 1; transition: opacity .15s; }
+  .flash-close:hover { opacity: 1; }
+
+  /* ── Page padding ── */
+  .page { padding: 24px 28px; flex: 1; max-width: 100%; overflow-x: hidden; }
+
+  /* ═══ RESPONSIVE ═══════════════════════════════ */
+  @media (max-width: 1024px) {
+    .chart-grid { grid-template-columns: 1fr; }
+    .dash-grid  { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .main-wrap { margin-left: 0 !important; max-width: 100vw; overflow-x: hidden; }
+    .hamburger { display: flex; }
+
     .topbar {
-      padding-top: env(safe-area-inset-top, 0px);
-      box-sizing: border-box;
+      padding: calc(env(safe-area-inset-top,0px) + 8px) 14px 8px;
+      min-height: 56px;
     }
-    .sidebar {
-      padding-top: env(safe-area-inset-top, 0px);
-      box-sizing: border-box;
+    .topbar-title h1   { font-size: 15px; }
+    .topbar-title p    { display: none; }
+    .topbar-chip       { display: none; }
+    .user-btn .uname   { display: none; }
+    .user-btn          { padding: 3px 8px 3px 3px; }
+    .user-btn .chevron { display: none; }
+
+    .page {
+      padding: 12px;
+      padding-left:  max(12px, env(safe-area-inset-left,0px));
+      padding-right: max(12px, env(safe-area-inset-right,0px));
     }
 
-    /* ── Mobile responsive overrides ────────────────────────── */
-    @media (max-width: 768px) {
-      /* Topbar: keep the safe-area reservation, add real breathing
-         room below the notch, and let height grow to fit both. */
-      .topbar {
-        padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
-        min-height: calc(52px + env(safe-area-inset-top, 0px));
-        height: auto;
-      }
-      /* Hide date chip on small screens */
-      .topbar-chip { display: none; }
-      /* Theme toggle — slightly smaller on mobile */
-      .theme-toggle { width: 34px; height: 34px; font-size: 13px; }
-      /* Page padding — also respect safe area on the sides for
-         landscape/notched devices */
-      .page {
-        padding: 12px;
-        padding-left: max(12px, env(safe-area-inset-left, 0px));
-        padding-right: max(12px, env(safe-area-inset-right, 0px));
-      }
-      /* Stat cards — 2 column on mobile */
-      .stats-row {
-        grid-template-columns: 1fr 1fr !important;
-        gap: 10px;
-      }
-      .stat-card { padding: 12px 10px; }
-      .stat-icon { width: 38px; height: 38px; font-size: 17px; }
-      .stat-info h3 { font-size: 20px; }
-      /* Dashboard grid — single column */
-      .dash-grid { grid-template-columns: 1fr !important; gap: 12px; }
-      /* Chart grid — single column */
-      .chart-grid { grid-template-columns: 1fr !important; }
-      /* Forecast — 4 cols */
-      .forecast-grid { grid-template-columns: repeat(4,1fr) !important; }
-      /* Form rows — single column */
-      .form-row { grid-template-columns: 1fr !important; }
-      /* NPK grid */
-      .npk-grid { grid-template-columns: 1fr 1fr !important; }
-      /* Table font size */
-      table { font-size: 12px; }
-      thead th { padding: 8px 10px; font-size: 10px; }
-      tbody td { padding: 9px 10px; }
-      /* Profile grid — single column */
-      .profile-grid {
-        display: block !important;
-      }
-      /* Cards full width */
-      .card { border-radius: 10px; }
-      /* Crop grid */
-      .crop-grid { grid-template-columns: 1fr !important; }
-      /* Irr grid */
-      .irr-grid { grid-template-columns: 1fr 1fr !important; }
-      /* Notes layout */
-      .notes-grid {
-        display: flex !important;
-        flex-direction: column !important;
-      }
-      /* Fertilizer layout */
-      .fert-grid {
-        display: flex !important;
-        flex-direction: column !important;
-      }
-    }
+    /* Stats */
+    .stats-row    { grid-template-columns: 1fr 1fr !important; gap: 10px; }
+    .stat-card    { padding: 12px 10px; gap: 10px; }
+    .stat-icon    { width: 40px; height: 40px; font-size: 17px; border-radius: 11px; }
+    .stat-info h3 { font-size: 21px; }
+    .stat-info p  { font-size: 11px; }
 
-    @media (max-width: 400px) {
-      .stats-row { grid-template-columns: 1fr 1fr !important; }
-      .stat-info h3 { font-size: 18px; }
-      .irr-grid { grid-template-columns: 1fr !important; }
-      .forecast-grid { grid-template-columns: repeat(3,1fr) !important; }
-    }
+    /* Grids */
+    .dash-grid  { grid-template-columns: 1fr !important; gap: 12px; }
+    .chart-grid { grid-template-columns: 1fr !important; }
+    .form-row   { grid-template-columns: 1fr !important; }
+    .crop-grid  { grid-template-columns: 1fr !important; }
+    .irr-grid   { grid-template-columns: 1fr 1fr !important; }
+    .npk-grid   { grid-template-columns: 1fr 1fr !important; }
+    .forecast-grid { grid-template-columns: repeat(4,1fr) !important; }
+
+    /* Tables */
+    table      { font-size: 12px; }
+    thead th   { padding: 8px 10px; font-size: 10px; }
+    tbody td   { padding: 9px 10px; }
+
+    /* Cards */
+    .card        { border-radius: 12px; }
+    .card-body   { padding: 14px 16px; }
+    .card-header { padding: 12px 16px; }
+    .modal       { margin: 0 10px; }
+
+    /* Profile page */
+    .profile-grid { display: block !important; }
+    .notes-grid   { display: flex !important; flex-direction: column !important; }
+    .fert-grid    { display: flex !important; flex-direction: column !important; }
+
+    /* Buttons */
+    .btn { padding: 8px 14px; font-size: 12.5px; }
+    .btn-sm { padding: 5px 11px; font-size: 11.5px; }
+
+    /* Photo modal */
+    #photoModal img { max-width: 92vw; }
+  }
+
+  @media (max-width: 400px) {
+    .stats-row       { grid-template-columns: 1fr 1fr !important; }
+    .stat-info h3    { font-size: 18px; }
+    .irr-grid        { grid-template-columns: 1fr !important; }
+    .forecast-grid   { grid-template-columns: repeat(3,1fr) !important; }
+  }
+
+  /* ── safe area for topbar ── */
+  .topbar  { box-sizing: border-box; }
+  .sidebar { padding-top: env(safe-area-inset-top,0px); box-sizing: border-box; }
   </style>
 </head>
 <body>
+
+<!-- Photo preview modal -->
+<div id="photoModal">
+  <button class="pm-close" onclick="closePhotoModal()" aria-label="Close">&times;</button>
+  <img id="photoModalImg" src="" alt="Profile photo"/>
+</div>
 
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <div class="app-shell">
   <!-- ═══ SIDEBAR ═══════════════════════════════════════════ -->
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-      <div class="brand-logo"><i class="fas fa-seedling"></i></div>
-      <div class="brand-text"><h2>GreenField</h2><span>Smart Farming Platform</span></div>
+    <div class="sidebar-brand" style="display:flex;align-items:center;gap:13px;border-bottom:1px solid rgba(255,255,255,.07)">
+      <div class="brand-logo" style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">
+        <i class="fas fa-seedling" style="color:#fff"></i>
+      </div>
+      <div class="brand-text">
+        <h2 style="font-size:15.5px;font-weight:900;color:#fff;letter-spacing:-.4px">GreenField</h2>
+        <span style="font-size:11px;opacity:.45;color:#fff;font-weight:400">Smart Farming Platform</span>
+      </div>
     </div>
-    <nav class="sidebar-nav">
+
+    <nav class="sidebar-nav" style="padding:12px 10px;flex:1">
       <div class="nav-section">{{ 'প্রধান' if is_bn else 'Main' }}</div>
       <a class="nav-link" href="{{ url_for('dashboard') }}">
-        <i class="fas fa-tachometer-alt"></i> {{ 'ড্যাশবোর্ড' if is_bn else 'Dashboard' }}
-        <span style="font-size:10px;background:rgba(255,255,255,.15);padding:1px 6px;border-radius:99px;margin-left:auto">{{ 'আমার' if is_bn else 'My Data' }}</span>
+        <i class="fas fa-tachometer-alt"></i>
+        {{ 'ড্যাশবোর্ড' if is_bn else 'Dashboard' }}
+        <span style="font-size:10px;background:rgba(255,255,255,.12);padding:1px 7px;border-radius:99px;margin-left:auto;font-weight:600">{{ 'আমার' if is_bn else 'My Data' }}</span>
       </a>
       <a class="nav-link" href="{{ url_for('index') }}">
-        <i class="fas fa-home"></i> {{ 'হোম পেজ' if is_bn else 'Home Page' }}
-        <span style="font-size:10px;opacity:.4;margin-left:auto">Public</span>
+        <i class="fas fa-home"></i>
+        {{ 'হোম পেজ' if is_bn else 'Home Page' }}
+        <span style="font-size:10px;opacity:.35;margin-left:auto">Public</span>
       </a>
-      <div class="nav-section" style="margin-top:8px">{{ 'ব্যবস্থাপনা' if is_bn else 'Management' }}</div>
+
+      <div class="nav-section" style="margin-top:6px">{{ 'ব্যবস্থাপনা' if is_bn else 'Management' }}</div>
       <a class="nav-link" href="{{ url_for('farms') }}"><i class="fas fa-tractor"></i> {{ 'খামার ব্যবস্থাপনা' if is_bn else 'Farm Management' }}</a>
       <a class="nav-link" href="{{ url_for('notes') }}"><i class="fas fa-book-open"></i> {{ 'খামার নোট' if is_bn else 'Farm Notes' }}</a>
-      <div class="nav-section" style="margin-top:8px">{{ 'খামার টুলস' if is_bn else 'Farm Tools' }}</div>
+
+      <div class="nav-section" style="margin-top:6px">{{ 'খামার টুলস' if is_bn else 'Farm Tools' }}</div>
       <a class="nav-link" href="{{ url_for('growth_page') }}"><i class="fas fa-seedling"></i> {{ 'ফসল ট্র্যাকার' if is_bn else 'Growth Tracker' }}</a>
       <a class="nav-link" href="{{ url_for('irrigation_page') }}"><i class="fas fa-tint"></i> {{ 'সেচ লগ' if is_bn else 'Irrigation Log' }}</a>
       <a class="nav-link" href="{{ url_for('expenses_page') }}"><i class="fas fa-coins"></i> {{ 'আয়-ব্যয় ট্র্যাকার' if is_bn else 'Expense Tracker' }}</a>
-      <div class="nav-section" style="margin-top:8px">{{ 'বাজার ও পরিকল্পনা' if is_bn else 'Market & Planning' }}</div>
+
+      <div class="nav-section" style="margin-top:6px">{{ 'বাজার ও পরিকল্পনা' if is_bn else 'Market & Planning' }}</div>
       <a class="nav-link" href="{{ url_for('market_page') }}"><i class="fas fa-chart-bar"></i> {{ 'বাজার দর' if is_bn else 'Market Prices' }}</a>
       <a class="nav-link" href="{{ url_for('calendar_page') }}"><i class="fas fa-calendar-alt"></i> {{ 'ফসল ক্যালেন্ডার' if is_bn else 'Crop Calendar' }}</a>
       <a class="nav-link" href="{{ url_for('report_page') }}"><i class="fas fa-file-pdf"></i> {{ 'খামার রিপোর্ট' if is_bn else 'Farm Report' }}</a>
-      <div class="nav-section" style="margin-top:8px">{{ 'বিশ্লেষণ' if is_bn else 'Insights' }}</div>
+
+      <div class="nav-section" style="margin-top:6px">{{ 'বিশ্লেষণ' if is_bn else 'Insights' }}</div>
       <a class="nav-link" href="{{ url_for('weather') }}"><i class="fas fa-cloud-sun"></i> {{ 'আবহাওয়া' if is_bn else 'Weather' }}</a>
       <a class="nav-link" href="{{ url_for('analytics') }}"><i class="fas fa-chart-line"></i> {{ 'বিশ্লেষণ' if is_bn else 'Analytics' }}</a>
       <a class="nav-link" href="{{ url_for('fertilizer') }}"><i class="fas fa-flask"></i> {{ 'সার হিসাব' if is_bn else 'Fertilizer Calc' }}</a>
       <a class="nav-link" href="{{ url_for('disease_page') }}"><i class="fas fa-microscope"></i> {{ 'রোগ সনাক্তকারী' if is_bn else 'Disease Detector' }}</a>
+
       {% if current_user %}
-      <div class="nav-section" style="margin-top:8px">Account</div>
+      <div class="nav-section" style="margin-top:6px">Account</div>
       <a class="nav-link" href="{{ url_for('profile') }}"><i class="fas fa-user-circle"></i> My Profile</a>
       <!-- Language toggle -->
-      <div style="display:flex;gap:6px;padding:6px 12px 0">
+      <div style="display:flex;gap:6px;padding:4px 12px 2px">
         <a href="{{ url_for('set_language', lang='en') }}"
            style="flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:12px;font-weight:700;
-                  background:{{ 'rgba(255,255,255,.18)' if session.get('lang','en')=='en' else 'rgba(255,255,255,.06)' }};
-                  color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.15)">
+                  background:{{ 'rgba(129,196,132,.25)' if session.get('lang','en')=='en' else 'rgba(255,255,255,.06)' }};
+                  color:#fff;text-decoration:none;border:1px solid {{ 'rgba(129,196,132,.4)' if session.get('lang','en')=='en' else 'rgba(255,255,255,.12)' }};
+                  transition:all .2s">
           🇬🇧 EN
         </a>
         <a href="{{ url_for('set_language', lang='bn') }}"
            style="flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:12px;font-weight:700;
-                  background:{{ 'rgba(255,255,255,.18)' if session.get('lang','en')=='bn' else 'rgba(255,255,255,.06)' }};
-                  color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.15)">
+                  background:{{ 'rgba(129,196,132,.25)' if session.get('lang','en')=='bn' else 'rgba(255,255,255,.06)' }};
+                  color:#fff;text-decoration:none;border:1px solid {{ 'rgba(129,196,132,.4)' if session.get('lang','en')=='bn' else 'rgba(255,255,255,.12)' }};
+                  transition:all .2s">
           🇧🇩 বাংলা
         </a>
       </div>
-      <a class="nav-link" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+      <a class="nav-link" href="{{ url_for('logout') }}" style="color:#FF7F7F;opacity:.8"><i class="fas fa-sign-out-alt" style="color:#FF7F7F"></i> Logout</a>
       {% endif %}
-      <!-- Install App button — hidden until the browser confirms the app is installable -->
+
       <button id="installAppBtn" class="nav-link" type="button"
-              style="display:none;width:100%;background:none;border:none;
-                     text-align:left;font-family:inherit;cursor:pointer;
-                     color:#4ade80;font-weight:700;margin-top:6px">
+              style="display:none;width:100%;background:none;border:none;text-align:left;
+                     font-family:inherit;cursor:pointer;color:#4ade80;font-weight:700;margin-top:4px">
         <i class="fas fa-download"></i> Install App
       </button>
     </nav>
 
     {% if current_user %}
-    <!-- Sidebar user chip -->
-    <div style="padding:14px 16px;border-top:1px solid rgba(255,255,255,.07)">
-      <a href="{{ url_for('profile') }}"
-         style="display:flex;align-items:center;gap:11px;color:#fff;opacity:.8;transition:opacity .2s"
-         onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'">
-        <div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;
-             background:linear-gradient(135deg,var(--p-light),var(--accent));
-             display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">
-          {{ current_user.name[0].upper() }}
+    <div class="sb-user-chip">
+      <a href="{{ url_for('profile') }}" class="sb-user-link">
+        {% if current_user.avatar_photo %}
+          <div class="sb-user-photo">
+            <img src="{{ current_user.avatar_photo }}" alt="{{ current_user.name }}"
+                 onclick="event.preventDefault();openPhotoModal('{{ current_user.avatar_photo }}')"/>
+          </div>
+        {% else %}
+          <div class="sb-user-init" style="background:{{ current_user.avatar_color or '#2E7D32' }}">
+            {{ current_user.name[0].upper() }}
+          </div>
+        {% endif %}
+        <div class="sb-user-info">
+          <div class="sb-user-name">{{ current_user.name }}</div>
+          <div class="sb-user-email">{{ current_user.email }}</div>
         </div>
-        <div style="min-width:0">
-          <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            {{ current_user.name }}</div>
-          <div style="font-size:10.5px;opacity:.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            {{ current_user.email }}</div>
-        </div>
-        <i class="fas fa-cog" style="margin-left:auto;font-size:13px;opacity:.5;flex-shrink:0"></i>
+        <i class="fas fa-cog" style="margin-left:auto;font-size:12px;opacity:.4;flex-shrink:0"></i>
       </a>
     </div>
     {% else %}
-    <div class="sidebar-footer">🌿 GreenField v4.0</div>
+    <div style="padding:14px 18px;border-top:1px solid rgba(255,255,255,.06);font-size:11px;opacity:.3;text-align:center;color:#fff">🌿 GreenField v5.0</div>
     {% endif %}
   </aside>
 
   <!-- ═══ MAIN ════════════════════════════════════════════════ -->
   <div class="main-wrap">
     <header class="topbar">
-      <div class="topbar-title">
+      <div class="topbar-title" style="min-width:0;flex:1;overflow:hidden">
         <h1>{% block page_title %}Dashboard{% endblock %}</h1>
         <p>{% block page_sub %}{% endblock %}</p>
       </div>
-      <div class="topbar-right">
+
+      <div class="topbar-right" style="display:flex;align-items:center;gap:10px;flex-shrink:0">
         <div class="topbar-chip"><i class="fas fa-calendar-day"></i><span id="liveDate"></span></div>
 
         {% if current_user %}
-        <!-- User avatar dropdown -->
         <div class="user-menu" id="userMenu">
           <button class="user-btn" onclick="toggleMenu()" aria-label="User menu">
-            <div class="user-avatar">{{ current_user.name[0].upper() }}</div>
-            <span style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-              {{ current_user.name.split()[0] }}
-            </span>
-            <i class="fas fa-chevron-down" style="font-size:10px;color:var(--muted)"></i>
+            {% if current_user.avatar_photo %}
+              <div class="gf-avatar" style="border-color:var(--p-pale)">
+                <img src="{{ current_user.avatar_photo }}" alt="{{ current_user.name }}"
+                     onclick="event.stopPropagation();openPhotoModal('{{ current_user.avatar_photo }}')"/>
+              </div>
+            {% else %}
+              <div class="gf-avatar" style="background:{{ current_user.avatar_color or '#2E7D32' }};border-color:rgba(255,255,255,.3)">
+                {{ current_user.name[0].upper() }}
+              </div>
+            {% endif %}
+            <span class="uname">{{ current_user.name.split()[0] }}</span>
+            <i class="fas fa-chevron-down chevron"></i>
           </button>
+
           <div class="user-dropdown">
             <div class="ud-head">
-              <strong>{{ current_user.name }}</strong>
-              <span>{{ current_user.email }}</span>
+              {% if current_user.avatar_photo %}
+                <div class="ud-photo">
+                  <img src="{{ current_user.avatar_photo }}" alt="{{ current_user.name }}"
+                       style="cursor:pointer" onclick="openPhotoModal('{{ current_user.avatar_photo }}')"/>
+                </div>
+              {% else %}
+                <div class="ud-photo-init" style="background:{{ current_user.avatar_color or '#2E7D32' }}">
+                  {{ current_user.name[0].upper() }}
+                </div>
+              {% endif %}
+              <div class="ud-info">
+                <strong>{{ current_user.name }}</strong>
+                <span>{{ current_user.email }}</span>
+              </div>
             </div>
             <a class="ud-item" href="{{ url_for('profile') }}">
               <i class="fas fa-user-circle"></i> My Profile
@@ -281,18 +494,15 @@
         </div>
         {% endif %}
 
-        <!-- Dark mode toggle — always visible, desktop & mobile -->
-        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
           <i class="fas fa-moon" id="themeIcon"></i>
         </button>
-
         <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
           <i class="fas fa-bars"></i>
         </button>
       </div>
     </header>
 
-    <!-- Flash messages -->
     {% with msgs = get_flashed_messages(with_categories=true) %}
     {% if msgs %}
     <div class="flash-wrap">
@@ -313,27 +523,25 @@
 
 <script src="{{ url_for('static',filename='js/app.js') }}"></script>
 <script>
-// Hamburger menu
+// ── Sidebar toggle ──
 const hamburgerBtn = document.getElementById('hamburgerBtn');
 const sidebar      = document.getElementById('sidebar');
 const overlay      = document.getElementById('sidebarOverlay');
-
 if (hamburgerBtn) {
-  hamburgerBtn.addEventListener('click', function(e) {
+  hamburgerBtn.addEventListener('click', e => {
     e.stopPropagation();
     sidebar.classList.toggle('open');
     overlay.classList.toggle('visible');
   });
 }
 if (overlay) {
-  overlay.addEventListener('click', function() {
+  overlay.addEventListener('click', () => {
     sidebar.classList.remove('open');
     overlay.classList.remove('visible');
   });
 }
-// Close sidebar when nav link clicked on mobile
-document.querySelectorAll('.nav-link').forEach(function(link) {
-  link.addEventListener('click', function() {
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', () => {
     if (window.innerWidth <= 768) {
       sidebar.classList.remove('open');
       overlay.classList.remove('visible');
@@ -341,85 +549,103 @@ document.querySelectorAll('.nav-link').forEach(function(link) {
   });
 });
 
-// User dropdown toggle
+// ── Auto-mark active nav link ──
+(function() {
+  const path = window.location.pathname;
+  document.querySelectorAll('.sidebar .nav-link').forEach(a => {
+    if (a.href && new URL(a.href).pathname === path) a.classList.add('active');
+  });
+})();
+
+// ── User dropdown ──
 function toggleMenu() {
   document.getElementById('userMenu').classList.toggle('open');
 }
-// Close on outside click
-document.addEventListener('click', function(e) {
+document.addEventListener('click', e => {
   const menu = document.getElementById('userMenu');
   if (menu && !menu.contains(e.target)) menu.classList.remove('open');
 });
 
-// ── Dark mode toggle ──────────────────────────────────
+// ── Dark mode ──
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon   = document.getElementById('themeIcon');
 const htmlEl      = document.documentElement;
-
 function updateThemeIcon() {
-  const isDark = htmlEl.getAttribute('data-theme') === 'dark';
+  const dark = htmlEl.getAttribute('data-theme') === 'dark';
   if (themeIcon) {
-    themeIcon.classList.toggle('fa-moon', !isDark);
-    themeIcon.classList.toggle('fa-sun', isDark);
+    themeIcon.classList.toggle('fa-moon', !dark);
+    themeIcon.classList.toggle('fa-sun',   dark);
   }
 }
-updateThemeIcon(); // set correct icon on page load (theme already applied by the inline script in <head>)
-
+updateThemeIcon();
 if (themeToggle) {
-  themeToggle.addEventListener('click', function() {
-    const isDark = htmlEl.getAttribute('data-theme') === 'dark';
-    if (isDark) {
-      htmlEl.removeAttribute('data-theme');
-      localStorage.setItem('gf-theme', 'light');
-    } else {
-      htmlEl.setAttribute('data-theme', 'dark');
-      localStorage.setItem('gf-theme', 'dark');
-    }
+  themeToggle.addEventListener('click', () => {
+    const dark = htmlEl.getAttribute('data-theme') === 'dark';
+    if (dark) { htmlEl.removeAttribute('data-theme'); localStorage.setItem('gf-theme','light'); }
+    else       { htmlEl.setAttribute('data-theme','dark'); localStorage.setItem('gf-theme','dark'); }
     updateThemeIcon();
   });
 }
+
+// ── Flash close ──
+document.querySelectorAll('.flash-close').forEach(btn => {
+  btn.addEventListener('click', () => btn.closest('.flash').remove());
+});
+
+// ── Live date ──
+(function() {
+  const el = document.getElementById('liveDate');
+  if (!el) return;
+  const d = new Date();
+  el.textContent = d.toLocaleDateString('en-GB', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
+})();
+
+// ── Photo preview modal ──
+function openPhotoModal(src) {
+  const modal = document.getElementById('photoModal');
+  const img   = document.getElementById('photoModalImg');
+  if (!modal || !img || !src) return;
+  img.src = src;
+  modal.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closePhotoModal() {
+  const modal = document.getElementById('photoModal');
+  if (modal) modal.classList.remove('show');
+  document.body.style.overflow = '';
+}
+document.getElementById('photoModal')?.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closePhotoModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePhotoModal(); });
 </script>
+
 {% block scripts %}{% endblock %}
+
 <script>
-// PWA Service Worker registration
+// PWA
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/static/sw.js")
     .then(() => console.log("GreenField SW registered ✅"))
     .catch(e => console.log("SW error:", e));
 }
-
-// ── PWA Install Prompt ──────────────────────────────────
-// Chrome/Edge fire beforeinstallprompt when the site passes PWA criteria
-// (valid manifest + icons + registered service worker + served over HTTPS).
-// We capture it so we can show our own "Install App" button instead of
-// waiting for the browser's own UI, which many users never notice.
 let deferredInstallPrompt = null;
 const installBtn = document.getElementById('installAppBtn');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredInstallPrompt = e;
   if (installBtn) installBtn.style.display = 'flex';
 });
-
 if (installBtn) {
   installBtn.addEventListener('click', async () => {
     if (!deferredInstallPrompt) return;
     deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice;
-    console.log('Install prompt outcome:', outcome);
-    deferredInstallPrompt = null;
-    installBtn.style.display = 'none';
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null; installBtn.style.display = 'none';
   });
 }
-
-// Hide the install button once the app is actually installed
 window.addEventListener('appinstalled', () => {
-  if (installBtn) installBtn.style.display = 'none';
-  deferredInstallPrompt = null;
+  if (installBtn) installBtn.style.display = 'none'; deferredInstallPrompt = null;
 });
-
-// If already running as an installed PWA, never show the button
 if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
   if (installBtn) installBtn.style.display = 'none';
 }
