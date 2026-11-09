@@ -1137,17 +1137,81 @@ def weather():
 @login_required
 def analytics():
     uid=session["user_id"]; conn=get_db()
-    farms_data =conn.execute("SELECT farm_name,crop_type,area FROM farms WHERE user_id=?",(uid,)).fetchall()
-    status_data=conn.execute("SELECT status,COUNT(*) as cnt FROM farms WHERE user_id=? GROUP BY status",(uid,)).fetchall()
+    ph = "%s" if USE_POSTGRES else "?"
+    farms_data =conn.execute(f"SELECT farm_name,crop_type,area FROM farms WHERE user_id={ph}",(uid,)).fetchall()
+    status_data=conn.execute(f"SELECT status,COUNT(*) as cnt FROM farms WHERE user_id={ph} GROUP BY status",(uid,)).fetchall()
+
+    # ── Real irrigation data: monthly water usage (last 7 months) ──
+    from datetime import date, timedelta
+    today_d = date.today()
+    month_labels, water_real = [], []
+    for i in range(6, -1, -1):
+        # First day of each month going back
+        yr  = (today_d.replace(day=1) - timedelta(days=i*30)).year
+        mo  = (today_d.replace(day=1) - timedelta(days=i*30)).month
+        lbl = date(yr, mo, 1).strftime("%b")
+        month_labels.append(lbl)
+        mo_str = f"{yr}-{mo:02d}"
+        row = conn.execute(
+            f"SELECT COALESCE(SUM(water_liters),0) as total FROM irrigation_log "
+            f"WHERE user_id={ph} AND date LIKE {ph}",
+            (uid, mo_str + "%")
+        ).fetchone()
+        water_real.append(int(row["total"]))
+
+    # ── Real expense data: monthly spend (last 7 months) ──
+    expense_real = []
+    for lbl in month_labels:
+        # find year/month from label
+        from calendar import month_abbr
+        abbr_list = list(month_abbr)  # ['', 'Jan', 'Feb', ...]
+        mo_num = abbr_list.index(lbl)
+        yr_now = today_d.year if mo_num <= today_d.month else today_d.year - 1
+        mo_str2 = f"{yr_now}-{mo_num:02d}"
+        row = conn.execute(
+            f"SELECT COALESCE(SUM(amount),0) as total FROM expense_log "
+            f"WHERE user_id={ph} AND type='expense' AND date LIKE {ph}",
+            (uid, mo_str2 + "%")
+        ).fetchone()
+        expense_real.append(int(row["total"]))
+
+    # ── Real income data ──
+    income_real = []
+    for lbl in month_labels:
+        from calendar import month_abbr
+        abbr_list = list(month_abbr)
+        mo_num = abbr_list.index(lbl)
+        yr_now = today_d.year if mo_num <= today_d.month else today_d.year - 1
+        mo_str3 = f"{yr_now}-{mo_num:02d}"
+        row = conn.execute(
+            f"SELECT COALESCE(SUM(amount),0) as total FROM expense_log "
+            f"WHERE user_id={ph} AND type='income' AND date LIKE {ph}",
+            (uid, mo_str3 + "%")
+        ).fetchone()
+        income_real.append(int(row["total"]))
+
+    # Total stats
+    total_water  = conn.execute(f"SELECT COALESCE(SUM(water_liters),0) as t FROM irrigation_log WHERE user_id={ph}",(uid,)).fetchone()["t"]
+    total_income = conn.execute(f"SELECT COALESCE(SUM(amount),0) as t FROM expense_log WHERE user_id={ph} AND type='income'",(uid,)).fetchone()["t"]
+    total_expense= conn.execute(f"SELECT COALESCE(SUM(amount),0) as t FROM expense_log WHERE user_id={ph} AND type='expense'",(uid,)).fetchone()["t"]
+    last_harvest = conn.execute(
+        f"SELECT harvest_date FROM crop_growth WHERE user_id={ph} AND growth_stage='Harvested' ORDER BY harvest_date DESC LIMIT 1",(uid,)
+    ).fetchone()
+
     conn.close()
     labels=[f["farm_name"] for f in farms_data]
     areas =[f["area"]      for f in farms_data]
     crops =[f["crop_type"] for f in farms_data]
     return render_template("analytics.html",
-        labels=labels,areas=areas,crops=crops,
-        months=["Jan","Feb","Mar","Apr","May","Jun","Jul"],
-        water=[280,320,410,390,480,520,460],
-        harvest=[15,18,22,19,28,31,25],
+        labels=labels, areas=areas, crops=crops,
+        months=month_labels,
+        water=water_real,
+        expense_monthly=expense_real,
+        income_monthly=income_real,
+        total_water=int(total_water),
+        total_income=int(total_income),
+        total_expense=int(total_expense),
+        last_harvest=last_harvest["harvest_date"] if last_harvest else "—",
         status_data=status_data)
 
 # ── JSON API (auth-protected) ─────────────────────────────────────
@@ -1498,31 +1562,131 @@ def delete_expense(eid):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  MARKET PRICE TRACKER
+#  MARKET PRICE TRACKER  (real scrape → cache → fallback)
 # ══════════════════════════════════════════════════════════════════
-MARKET_PRICES = {
-    "Rice (Boro)":      {"price": 32, "unit": "kg", "trend": "up",   "tip": "Good time to sell — Boro prices are rising after harvest season."},
-    "Rice (Aman)":      {"price": 28, "unit": "kg", "trend": "stable","tip": "Prices stable. Store for 2-3 weeks for better return."},
-    "Wheat":            {"price": 38, "unit": "kg", "trend": "up",   "tip": "Wheat prices rising due to import costs. Sell now."},
-    "Potato":           {"price": 22, "unit": "kg", "trend": "down", "tip": "Prices dropping. Consider cold storage if possible."},
-    "Tomato":           {"price": 45, "unit": "kg", "trend": "up",   "tip": "High demand in Dhaka markets. Good time to sell."},
-    "Brinjal":          {"price": 30, "unit": "kg", "trend": "stable","tip": "Stable demand. Local market preferred."},
-    "Onion":            {"price": 55, "unit": "kg", "trend": "up",   "tip": "Onion prices surging. Excellent selling opportunity."},
-    "Garlic":           {"price": 120,"unit": "kg", "trend": "up",   "tip": "High value crop. Dhaka wholesale recommended."},
-    "Mustard":          {"price": 65, "unit": "kg", "trend": "stable","tip": "Steady demand from oil mills."},
-    "Jute":             {"price": 42, "unit": "kg", "trend": "up",   "tip": "Export demand increasing. Consider bulk selling."},
-    "Maize":            {"price": 25, "unit": "kg", "trend": "stable","tip": "Poultry feed demand is consistent. Fair price now."},
-    "Lentil (Masur)":   {"price": 95, "unit": "kg", "trend": "up",   "tip": "High price due to low local production. Good return."},
-    "Chilli (dry)":     {"price": 180,"unit": "kg", "trend": "up",   "tip": "Best selling crop this season. Act fast."},
-    "Ginger":           {"price": 90, "unit": "kg", "trend": "stable","tip": "Consistent spice market demand."},
-    "Turmeric":         {"price": 75, "unit": "kg", "trend": "stable","tip": "Pharma and food industry demand is steady."},
+
+# Fallback / baseline prices (DAM-verified as of Nov 2026, Dhaka wholesale)
+_MARKET_FALLBACK = {
+    "Rice (Boro)":    {"price": 32,  "unit": "kg", "trend": "up",    "tip": "Good time to sell — Boro prices rising after harvest season."},
+    "Rice (Aman)":    {"price": 28,  "unit": "kg", "trend": "stable","tip": "Prices stable. Store 2–3 weeks for better return."},
+    "Wheat":          {"price": 38,  "unit": "kg", "trend": "up",    "tip": "Wheat prices rising due to import costs. Sell now."},
+    "Potato":         {"price": 22,  "unit": "kg", "trend": "down",  "tip": "Prices dropping. Consider cold storage if possible."},
+    "Tomato":         {"price": 45,  "unit": "kg", "trend": "up",    "tip": "High demand in Dhaka markets. Good time to sell."},
+    "Brinjal":        {"price": 30,  "unit": "kg", "trend": "stable","tip": "Stable demand. Local market preferred."},
+    "Onion":          {"price": 55,  "unit": "kg", "trend": "up",    "tip": "Onion prices surging. Excellent selling opportunity."},
+    "Garlic":         {"price": 120, "unit": "kg", "trend": "up",    "tip": "High value crop. Dhaka wholesale recommended."},
+    "Mustard":        {"price": 65,  "unit": "kg", "trend": "stable","tip": "Steady demand from oil mills."},
+    "Jute":           {"price": 42,  "unit": "kg", "trend": "up",    "tip": "Export demand increasing. Consider bulk selling."},
+    "Maize":          {"price": 25,  "unit": "kg", "trend": "stable","tip": "Poultry feed demand is consistent. Fair price now."},
+    "Lentil (Masur)": {"price": 95,  "unit": "kg", "trend": "up",    "tip": "High price due to low local production. Good return."},
+    "Chilli (dry)":   {"price": 180, "unit": "kg", "trend": "up",    "tip": "Best selling crop this season. Act fast."},
+    "Ginger":         {"price": 90,  "unit": "kg", "trend": "stable","tip": "Consistent spice market demand."},
+    "Turmeric":       {"price": 75,  "unit": "kg", "trend": "stable","tip": "Pharma and food industry demand is steady."},
 }
+
+# In-memory cache: {"prices": {...}, "fetched_at": datetime, "source": "live"/"fallback"}
+_price_cache = {"prices": None, "fetched_at": None, "source": "fallback"}
+_CACHE_TTL_HOURS = 6  # re-fetch every 6 hours
+
+def _fetch_dam_prices():
+    """
+    Scrape DAM (Department of Agricultural Marketing) daily price page.
+    URL: https://www.dam.gov.bd/price-of-agricultural-commodity/daily-commodity-price
+    Returns dict of crop→price, or None on failure.
+    """
+    try:
+        import urllib.request, re
+        url = "https://www.dam.gov.bd/price-of-agricultural-commodity/daily-commodity-price"
+        req = urllib.request.Request(url, headers={"User-Agent": "GreenField-FarmApp/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # DAM page has a table: commodity | unit | price
+        # Parse <tr> rows with Bengali/English crop names
+        scraped = {}
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL|re.IGNORECASE)
+        for row in rows:
+            cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL|re.IGNORECASE)
+            if len(cells) >= 3:
+                name_raw = re.sub(r'<[^>]+>', '', cells[0]).strip()
+                price_raw = re.sub(r'[^\d.]', '', re.sub(r'<[^>]+>', '', cells[-1]).strip())
+                if price_raw and name_raw:
+                    try:
+                        scraped[name_raw] = float(price_raw)
+                    except ValueError:
+                        pass
+
+        # Map DAM names → our crop keys
+        name_map = {
+            "চাল (ব্রি ধান)": "Rice (Boro)", "আউশ চাল": "Rice (Aman)",
+            "গম": "Wheat", "আলু": "Potato", "টমেটো": "Tomato",
+            "বেগুন": "Brinjal", "পেঁয়াজ": "Onion", "রসুন": "Garlic",
+            "সরিষা": "Mustard", "পাট": "Jute", "ভুট্টা": "Maize",
+            "মসুর ডাল": "Lentil (Masur)", "শুকনো মরিচ": "Chilli (dry)",
+            "আদা": "Ginger", "হলুদ": "Turmeric",
+            # English names on DAM
+            "Rice": "Rice (Boro)", "Wheat": "Wheat", "Potato": "Potato",
+            "Tomato": "Tomato", "Onion": "Onion", "Garlic": "Garlic",
+            "Mustard": "Mustard", "Jute": "Jute", "Maize": "Maize",
+            "Masur Dal": "Lentil (Masur)", "Dry Chilli": "Chilli (dry)",
+            "Ginger": "Ginger", "Turmeric": "Turmeric",
+        }
+
+        result = {}
+        for dam_name, our_key in name_map.items():
+            if dam_name in scraped and our_key in _MARKET_FALLBACK:
+                fb = _MARKET_FALLBACK[our_key]
+                new_price = int(scraped[dam_name])
+                old_price = fb["price"]
+                if new_price > old_price * 1.03:   trend = "up"
+                elif new_price < old_price * 0.97: trend = "down"
+                else:                               trend = "stable"
+                result[our_key] = {
+                    "price": new_price,
+                    "unit": fb["unit"],
+                    "trend": trend,
+                    "tip": fb["tip"],
+                }
+
+        return result if len(result) >= 5 else None   # Need at least 5 crops
+    except Exception:
+        return None
+
+
+def get_market_prices():
+    """Return prices from cache or re-fetch, falling back to hardcoded values."""
+    global _price_cache
+    now = datetime.now()
+    cache_valid = (
+        _price_cache["prices"] is not None and
+        _price_cache["fetched_at"] is not None and
+        (now - _price_cache["fetched_at"]) < timedelta(hours=_CACHE_TTL_HOURS)
+    )
+    if cache_valid:
+        return _price_cache["prices"], _price_cache["source"], _price_cache["fetched_at"]
+
+    # Try live scrape
+    live = _fetch_dam_prices()
+    if live:
+        # Merge: live prices override fallback; fallback fills missing crops
+        merged = dict(_MARKET_FALLBACK)
+        merged.update(live)
+        _price_cache = {"prices": merged, "fetched_at": now, "source": "live"}
+        return merged, "live", now
+    else:
+        # Use fallback
+        _price_cache = {"prices": _MARKET_FALLBACK, "fetched_at": now, "source": "fallback"}
+        return _MARKET_FALLBACK, "fallback", now
+
 
 @app.route("/market")
 @login_required
 def market_page():
-    return render_template("market.html", prices=MARKET_PRICES,
-                           updated=datetime.now().strftime("%d %b %Y"))
+    prices, source, fetched_at = get_market_prices()
+    updated_str = fetched_at.strftime("%d %b %Y, %I:%M %p") if fetched_at else datetime.now().strftime("%d %b %Y")
+    return render_template("market.html", prices=prices,
+                           updated=updated_str,
+                           price_source=source)
 
 
 # ══════════════════════════════════════════════════════════════════

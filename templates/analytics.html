@@ -1,64 +1,162 @@
 {% extends "base.html" %}
 {% block title %}Analytics{% endblock %}
-{% block page_title %}Analytics{% endblock %}
-{% block page_sub %}Visual insights into your farm data and performance.{% endblock %}
+{% block page_title %}{{ 'বিশ্লেষণ' if is_bn else 'Analytics' }}{% endblock %}
+{% block page_sub %}{{ 'আপনার খামারের পারফরম্যান্স ও ডেটা বিশ্লেষণ' if is_bn else 'Real insights from your farm data and performance.' }}{% endblock %}
 {% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
 
 {% block content %}
+
+<!-- Real Data Stats Row -->
 <div class="stats-row" style="margin-bottom:22px">
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-map"></i></div><div class="stat-info"><h3>{{ labels|length }}</h3><p>Farms Tracked</p></div></div>
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-tint"></i></div><div class="stat-info"><h3>{{ water[-1] }}L</h3><p>Water This Month</p></div></div>
-  <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-seedling"></i></div><div class="stat-info"><h3>{{ harvest[-1] }}t</h3><p>Last Harvest</p></div></div>
-  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-chart-line"></i></div>
-    <div class="stat-info"><h3>+{{ (((harvest[-1]-harvest[-2])/harvest[-2])*100)|round(1) }}%</h3><p>Harvest Growth</p></div>
+  <div class="stat-card">
+    <div class="stat-icon green"><i class="fas fa-map"></i></div>
+    <div class="stat-info"><h3>{{ labels|length }}</h3><p>{{ 'খামার' if is_bn else 'Farms' }}</p></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon blue"><i class="fas fa-tint"></i></div>
+    <div class="stat-info">
+      <h3>{% if water[-1] > 0 %}{{ water[-1] }}L{% else %}—{% endif %}</h3>
+      <p>{{ 'এই মাসে সেচ' if is_bn else 'Water This Month' }}</p>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon teal"><i class="fas fa-coins"></i></div>
+    <div class="stat-info">
+      <h3>৳{{ total_income }}</h3>
+      <p>{{ 'মোট আয়' if is_bn else 'Total Income' }}</p>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon {{ 'green' if (total_income - total_expense) >= 0 else 'red' }}">
+      <i class="fas fa-chart-line"></i>
+    </div>
+    <div class="stat-info">
+      {% set profit = total_income - total_expense %}
+      <h3 style="color:{{ 'var(--green)' if profit >= 0 else '#e53935' }}">
+        {{ '+' if profit >= 0 else '' }}৳{{ profit }}
+      </h3>
+      <p>{{ 'নেট লাভ/ক্ষতি' if is_bn else 'Net Profit/Loss' }}</p>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon purple"><i class="fas fa-water"></i></div>
+    <div class="stat-info">
+      <h3>{{ total_water }}L</h3>
+      <p>{{ 'সর্বমোট সেচ' if is_bn else 'Total Water Used' }}</p>
+    </div>
   </div>
 </div>
 
+<!-- Data Source Notice -->
+{% set has_data = water|sum > 0 or income_monthly|sum > 0 %}
+{% if not has_data %}
+<div style="background:linear-gradient(135deg,#FFF3E0,#FFF8E1);border:1.5px solid #FFB74D;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+  <i class="fas fa-info-circle" style="color:#F57C00;font-size:20px;flex-shrink:0"></i>
+  <div>
+    <strong style="color:#E65100">{{ 'ডেটা যোগ করুন' if is_bn else 'Start Adding Data' }}</strong>
+    <div style="font-size:13px;color:#BF360C;margin-top:3px">
+      {{ 'সেচ লগ এবং খরচ ট্র্যাকারে ডেটা যোগ করলে এখানে real charts দেখা যাবে।' if is_bn else 'Add irrigation logs and expense records to see real charts here instead of empty graphs.' }}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="chart-grid">
-  <div class="card"><div class="card-header"><h2><i class="fas fa-chart-bar"></i> Farm Areas (acres)</h2></div>
+  <!-- Farm Areas — always real (from DB) -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-chart-bar"></i> {{ 'খামার আয়তন (একর)' if is_bn else 'Farm Areas (acres)' }}</h2>
+      <span class="badge badge-green" title="Loaded from your farms database">📊 Real</span>
+    </div>
     <div class="card-body"><div class="chart-wrap">
-      <canvas id="chartFarmArea" data-labels='{{ labels|tojson }}' data-values='{{ areas|tojson }}'></canvas>
-    </div></div></div>
-  <div class="card"><div class="card-header"><h2><i class="fas fa-tint"></i> Monthly Water Usage (L)</h2></div>
+      {% if labels %}
+        <canvas id="chartFarmArea" data-labels='{{ labels|tojson }}' data-values='{{ areas|tojson }}'></canvas>
+      {% else %}
+        <div style="text-align:center;padding:40px;color:var(--muted)"><i class="fas fa-tractor" style="font-size:32px;margin-bottom:12px;display:block"></i>{{ 'কোনো খামার নেই' if is_bn else 'No farms added yet' }}</div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <!-- Monthly Water Usage — real from irrigation_log -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-tint"></i> {{ 'মাসিক সেচ (লিটার)' if is_bn else 'Monthly Water Usage (L)' }}</h2>
+      {% if water|sum > 0 %}
+        <span class="badge badge-blue" title="Loaded from irrigation_log table">📊 Real</span>
+      {% else %}
+        <span class="badge badge-amber" title="No irrigation data yet">⏳ No data yet</span>
+      {% endif %}
+    </div>
     <div class="card-body"><div class="chart-wrap">
       <canvas id="chartWater" data-labels='{{ months|tojson }}' data-values='{{ water|tojson }}'></canvas>
-    </div></div></div>
-  <div class="card"><div class="card-header"><h2><i class="fas fa-seedling"></i> Monthly Harvest (tonnes)</h2></div>
+    </div></div>
+  </div>
+
+  <!-- Monthly Expense vs Income — real from expense_log -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-coins"></i> {{ 'মাসিক আয় ও ব্যয় (৳)' if is_bn else 'Monthly Income vs Expense (৳)' }}</h2>
+      {% if income_monthly|sum > 0 or expense_monthly|sum > 0 %}
+        <span class="badge badge-green" title="Loaded from expense_log table">📊 Real</span>
+      {% else %}
+        <span class="badge badge-amber">⏳ No data yet</span>
+      {% endif %}
+    </div>
     <div class="card-body"><div class="chart-wrap">
-      <canvas id="chartHarvest" data-labels='{{ months|tojson }}' data-values='{{ harvest|tojson }}'></canvas>
-    </div></div></div>
-  <div class="card"><div class="card-header"><h2><i class="fas fa-chart-pie"></i> Crop Distribution</h2></div>
+      <canvas id="chartFinance"
+        data-labels='{{ months|tojson }}'
+        data-income='{{ income_monthly|tojson }}'
+        data-expense='{{ expense_monthly|tojson }}'></canvas>
+    </div></div>
+  </div>
+
+  <!-- Crop Distribution — real from farms table -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fas fa-chart-pie"></i> {{ 'ফসল বিতরণ' if is_bn else 'Crop Distribution' }}</h2>
+      <span class="badge badge-green">📊 Real</span>
+    </div>
     <div class="card-body"><div class="chart-wrap">
-      <canvas id="chartCrops" data-labels='{{ crops|tojson }}' data-values='{{ areas|tojson }}'></canvas>
-    </div></div></div>
+      {% if crops %}
+        <canvas id="chartCrops" data-labels='{{ crops|tojson }}' data-values='{{ areas|tojson }}'></canvas>
+      {% else %}
+        <div style="text-align:center;padding:40px;color:var(--muted)"><i class="fas fa-seedling" style="font-size:32px;margin-bottom:12px;display:block"></i>{{ 'ফসল নেই' if is_bn else 'No crops yet' }}</div>
+      {% endif %}
+    </div></div>
+  </div>
 </div>
 
 <!-- Fertilizer Calculator -->
 <div class="card mt-20">
   <div class="card-header">
-    <h2><i class="fas fa-flask"></i> Fertilizer Calculator</h2>
+    <h2><i class="fas fa-flask"></i> {{ 'সার ক্যালকুলেটর' if is_bn else 'Fertilizer Calculator' }}</h2>
     <span class="badge badge-blue">N · P · K</span>
   </div>
   <div class="card-body">
-    <p class="text-muted fs-12" style="margin-bottom:18px">Enter crop type and area to get nitrogen, phosphorus, potassium and urea recommendations.</p>
+    <p class="text-muted fs-12" style="margin-bottom:18px">
+      {{ 'ফসল এবং জমির পরিমাণ দিন — নাইট্রোজেন, ফসফরাস, পটাশিয়াম ও ইউরিয়ার পরিমাণ পাবেন।' if is_bn else 'Enter crop type and area to get nitrogen, phosphorus, potassium and urea recommendations.' }}
+    </p>
     <form id="fertForm">
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="margin:0;flex:1;min-width:130px">
-          <label>Crop Type</label>
+          <label>{{ 'ফসলের ধরন' if is_bn else 'Crop Type' }}</label>
           <select name="calc_crop" class="form-control" required>
-            <option value="">— Select —</option>
-            <option value="rice">Rice</option><option value="wheat">Wheat</option>
-            <option value="maize">Maize</option><option value="tomato">Tomato</option>
-            <option value="potato">Potato</option><option value="jute">Jute</option>
-            <option value="mustard">Mustard</option>
+            <option value="">— {{ 'বেছে নিন' if is_bn else 'Select' }} —</option>
+            <option value="rice">{{ 'ধান' if is_bn else 'Rice' }}</option>
+            <option value="wheat">{{ 'গম' if is_bn else 'Wheat' }}</option>
+            <option value="maize">{{ 'ভুট্টা' if is_bn else 'Maize' }}</option>
+            <option value="tomato">{{ 'টমেটো' if is_bn else 'Tomato' }}</option>
+            <option value="potato">{{ 'আলু' if is_bn else 'Potato' }}</option>
+            <option value="jute">{{ 'পাট' if is_bn else 'Jute' }}</option>
+            <option value="mustard">{{ 'সরিষা' if is_bn else 'Mustard' }}</option>
           </select>
         </div>
         <div class="form-group" style="margin:0;flex:1;min-width:110px">
-          <label>Area (acres)</label>
+          <label>{{ 'আয়তন (একর)' if is_bn else 'Area (acres)' }}</label>
           <input type="number" name="calc_area" class="form-control" placeholder="e.g. 3.5" step="0.1" min="0.1" required/>
         </div>
         <button type="submit" class="btn btn-primary" style="flex-shrink:0">
-          <i class="fas fa-calculator"></i> Calculate
+          <i class="fas fa-calculator"></i> {{ 'হিসাব করুন' if is_bn else 'Calculate' }}
         </button>
       </div>
     </form>
@@ -70,12 +168,22 @@
 {% if labels %}
 <div class="card mt-20">
   <div class="card-header">
-    <h2><i class="fas fa-table"></i> Farm Statistics</h2>
-    <span class="badge badge-green">{{ labels|length }} farms</span>
+    <h2><i class="fas fa-table"></i> {{ 'খামারের বিস্তারিত' if is_bn else 'Farm Statistics' }}</h2>
+    <span class="badge badge-green">{{ labels|length }} {{ 'টি খামার' if is_bn else 'farms' }}</span>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>#</th><th>Farm</th><th>Crop</th><th>Area</th><th>Est. Yield</th><th>Water/Wk</th><th>Size</th></tr></thead>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>{{ 'খামার' if is_bn else 'Farm' }}</th>
+          <th>{{ 'ফসল' if is_bn else 'Crop' }}</th>
+          <th>{{ 'আয়তন' if is_bn else 'Area' }}</th>
+          <th>{{ 'আনুমানিক ফলন' if is_bn else 'Est. Yield' }}</th>
+          <th>{{ 'সাপ্তাহিক পানি' if is_bn else 'Water/Week' }}</th>
+          <th>{{ 'সাইজ' if is_bn else 'Size' }}</th>
+        </tr>
+      </thead>
       <tbody>
         {% for i in range(labels|length) %}
         <tr>
@@ -86,7 +194,7 @@
           <td>{{ (areas[i]*2.5)|round(1) }} t</td>
           <td>{{ (areas[i]*45)|round(0)|int }} L</td>
           <td><span class="badge {{ 'badge-green' if areas[i]>=5 else 'badge-blue' if areas[i]>=3 else 'badge-amber' }}">
-            {{ 'Large' if areas[i]>=5 else 'Medium' if areas[i]>=3 else 'Small' }}
+            {{ ('বড়' if is_bn else 'Large') if areas[i]>=5 else ('মাঝারি' if is_bn else 'Medium') if areas[i]>=3 else ('ছোট' if is_bn else 'Small') }}
           </span></td>
         </tr>
         {% endfor %}
@@ -98,7 +206,7 @@
 
 {% if status_data %}
 <div class="card mt-20">
-  <div class="card-header"><h2><i class="fas fa-tags"></i> Farms by Status</h2></div>
+  <div class="card-header"><h2><i class="fas fa-tags"></i> {{ 'স্ট্যাটাস অনুযায়ী খামার' if is_bn else 'Farms by Status' }}</h2></div>
   <div class="card-body">
     <div style="display:flex;gap:14px;flex-wrap:wrap">
       {% for s in status_data %}
@@ -111,4 +219,119 @@
   </div>
 </div>
 {% endif %}
+
+<script>
+// ── Chart helpers ──
+const COLORS = ['#2E7D32','#1565C0','#F57F17','#6A1B9A','#00695C','#AD1457','#4E342E'];
+function mkLine(id, labels, data, label, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  new Chart(el, {type:'line', data:{labels, datasets:[{label, data,
+    borderColor:color, backgroundColor:color+'22', borderWidth:2.5,
+    pointBackgroundColor:color, pointRadius:4, fill:true, tension:.35}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true, grid:{color:'rgba(0,0,0,.06)'},
+              ticks:{font:{size:11}}}, x:{grid:{display:false}, ticks:{font:{size:11}}}}}});
+}
+function mkBar(id, labels, data, label, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  new Chart(el, {type:'bar', data:{labels, datasets:[{label, data,
+    backgroundColor:color+'cc', borderColor:color, borderWidth:1.5, borderRadius:6}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true, grid:{color:'rgba(0,0,0,.06)'}}, x:{grid:{display:false}}}}});
+}
+function mkPie(id, labels, data) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  new Chart(el, {type:'doughnut', data:{labels,
+    datasets:[{data, backgroundColor:COLORS.slice(0,labels.length),
+               borderWidth:2, borderColor:'#fff'}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom', labels:{font:{size:11}, boxWidth:14}}}}});
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Farm Areas
+  const fa = document.getElementById('chartFarmArea');
+  if (fa) mkBar('chartFarmArea',
+    JSON.parse(fa.dataset.labels||'[]'),
+    JSON.parse(fa.dataset.values||'[]'), 'Area (ac)', '#2E7D32');
+
+  // Water Usage (real from irrigation_log)
+  const wc = document.getElementById('chartWater');
+  if (wc) mkLine('chartWater',
+    JSON.parse(wc.dataset.labels||'[]'),
+    JSON.parse(wc.dataset.values||'[]'), 'Water (L)', '#1565C0');
+
+  // Finance chart (dual: income + expense)
+  const fc = document.getElementById('chartFinance');
+  if (fc) {
+    const labels  = JSON.parse(fc.dataset.labels||'[]');
+    const income  = JSON.parse(fc.dataset.income||'[]');
+    const expense = JSON.parse(fc.dataset.expense||'[]');
+    new Chart(fc, {type:'bar', data:{labels, datasets:[
+      {label:'Income ৳', data:income, backgroundColor:'#2E7D3288', borderColor:'#2E7D32', borderWidth:1.5, borderRadius:5},
+      {label:'Expense ৳', data:expense, backgroundColor:'#C6282888', borderColor:'#C62828', borderWidth:1.5, borderRadius:5}
+    ]}, options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'top', labels:{font:{size:11}}}},
+      scales:{y:{beginAtZero:true, grid:{color:'rgba(0,0,0,.06)'}}, x:{grid:{display:false}}}}});
+  }
+
+  // Crop pie
+  const cp = document.getElementById('chartCrops');
+  if (cp) mkPie('chartCrops',
+    JSON.parse(cp.dataset.labels||'[]'),
+    JSON.parse(cp.dataset.values||'[]'));
+});
+
+// ── Fertilizer Calculator ──
+const FERT = {
+  rice:    {N:120,P:60, K:60, notes:'Split N into 3 doses'},
+  wheat:   {N:100,P:60, K:40, notes:'Apply at sowing + tillering'},
+  maize:   {N:150,P:70, K:70, notes:'Side-dress at knee height'},
+  tomato:  {N:100,P:80, K:120,notes:'High K for fruit quality'},
+  potato:  {N:120,P:100,K:150,notes:'Apply K at planting'},
+  jute:    {N:80, P:40, K:40, notes:'Light feeder'},
+  mustard: {N:60, P:40, K:30, notes:'Apply B 0.5 kg/acre'},
+};
+document.getElementById('fertForm')?.addEventListener('submit', e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const crop = fd.get('calc_crop'), area = parseFloat(fd.get('calc_area'));
+  if (!FERT[crop] || !area) return;
+  const f = FERT[crop];
+  const N = (f.N*area).toFixed(1), P = (f.P*area).toFixed(1),
+        K = (f.K*area).toFixed(1), Urea = (f.N*area*2.17).toFixed(1);
+  document.getElementById('calcOut').innerHTML = `
+    <div style="margin-top:18px;background:var(--bg);border-radius:10px;padding:18px 22px">
+      <div style="font-weight:700;margin-bottom:12px;color:var(--p)">
+        📋 ${crop.charAt(0).toUpperCase()+crop.slice(1)} — ${area} acres
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px">
+        <div style="background:#E8F5E9;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#2E7D32">${N} kg</div>
+          <div style="font-size:11px;color:#555;margin-top:3px">Nitrogen (N)</div>
+        </div>
+        <div style="background:#E3F2FD;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#1565C0">${P} kg</div>
+          <div style="font-size:11px;color:#555;margin-top:3px">Phosphorus (P)</div>
+        </div>
+        <div style="background:#FFF3E0;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#E65100">${K} kg</div>
+          <div style="font-size:11px;color:#555;margin-top:3px">Potassium (K)</div>
+        </div>
+        <div style="background:#F3E5F5;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#6A1B9A">${Urea} kg</div>
+          <div style="font-size:11px;color:#555;margin-top:3px">Urea equiv.</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#666;padding:8px 12px;background:#FFFDE7;border-radius:7px;border-left:3px solid #FDD835">
+        💡 ${f.notes}
+      </div>
+    </div>`;
+});
+</script>
 {% endblock %}
