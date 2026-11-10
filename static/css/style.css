@@ -112,7 +112,7 @@ body, .card, .topbar, .sidebar, .stat-card, .modal,
 /* ── Reset ───────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-html,body{overflow-x:hidden;max-width:100vw}
+html,body{overflow-x:hidden;max-width:100%}
 body{font-family:'Poppins',sans-serif;background:var(--bg);color:var(--text);font-size:14.5px;line-height:1.6}
 a{color:inherit;text-decoration:none}
 img{max-width:100%;display:block}
@@ -187,7 +187,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
 .sidebar-overlay.visible{display:block}
 
 /* ── Main wrapper ────────────────────────────── */
-.main-wrap{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;max-width:100%;overflow-x:hidden}
+.main-wrap{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;min-width:0;overflow-x:hidden}
 
 /* ── Topbar ──────────────────────────────────── */
 .topbar{
@@ -219,7 +219,7 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
   pointer-events:auto;position:relative;z-index:250;
 }
 .hamburger i{pointer-events:none}
-.page{padding:26px 28px;flex:1;max-width:100%;overflow-x:clip}
+.page{padding:26px 28px;flex:1;min-width:0;overflow-x:hidden;overflow-y:visible}
 
 /* ═══════════════════════════════════════════════
    FLASH MESSAGES
@@ -264,7 +264,9 @@ button,input,select,textarea{font-family:inherit;font-size:inherit}
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;gap:12px;
   background:linear-gradient(90deg,rgba(46,125,50,.06),transparent);
+  flex-wrap:wrap;min-width:0;
 }
+.card-header h2,.card-header h3{min-width:0;flex-shrink:1}
 .card-header h2{
   font-size:14px;font-weight:700;color:var(--p);
   display:flex;align-items:center;gap:9px;
@@ -745,15 +747,37 @@ textarea.form-control{resize:vertical;min-height:80px}
 @media(max-width:1024px){.chart-grid{grid-template-columns:1fr}.dash-grid{grid-template-columns:1fr}}
 @media(max-width:900px){
   .sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}
-  .main-wrap{margin-left:0;max-width:100vw;overflow-x:hidden}
+  .main-wrap{margin-left:0;width:100%;max-width:100%;overflow-x:hidden;min-width:0}
   /* Two-col form layouts → stack */
   .growth-grid,.irr-layout,.exp-layout,.fert-grid{grid-template-columns:1fr!important;gap:14px!important}
   .pnl-row{grid-template-columns:1fr 1fr!important}
   .stat-row{grid-template-columns:1fr 1fr!important}
+  /* All inputs/selects/buttons full width on mobile */
+  .form-control{width:100%!important;box-sizing:border-box!important;max-width:100%!important}
+  .btn{max-width:100%;box-sizing:border-box}
   .hamburger{display:flex;align-items:center;justify-content:center;
     width:38px;height:38px;flex-shrink:0;order:99;
     background:var(--bg);border:1.5px solid var(--border);border-radius:10px}
-  .page{padding:16px}
+  .page{padding:12px;overflow-x:hidden;overflow-y:visible;min-width:0;width:100%;max-width:100%}
+  /* Ensure no child can overflow page on mobile */
+  .page *{max-width:100%;box-sizing:border-box}
+  /* Tables must scroll inside their wrapper, not overflow */
+  .page .irr-table-wrap,
+  .page .exp-table-wrap,
+  .page .table-wrap,
+  .page .rp-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch;display:block;width:100%}
+  .page .irr-table-wrap table,
+  .page .exp-table-wrap table,
+  .page .table-wrap table,
+  .page .rp-table-wrap table{min-width:480px;max-width:none!important}
+  /* Cards should not clip children */
+  .card{overflow:visible;min-width:0}
+  .card-body{overflow:visible;padding:14px 15px;min-width:0}
+  .card-header{padding:12px 15px}
+  /* Text should wrap, not overflow */
+  p,span,label,td,th,li{word-break:break-word;overflow-wrap:anywhere}
+  /* Badges wrap */
+  .badge{white-space:normal;word-break:break-word}
   .topbar{padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top, 0px));
     flex-wrap:nowrap}
   .topbar-title{min-width:0;flex:1;overflow:hidden}

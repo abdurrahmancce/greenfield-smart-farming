@@ -95,14 +95,14 @@
       <div class="card-body" style="padding:14px">
         <label class="form-label">Filter by Farm</label>
         <form method="GET">
-          <div style="display:flex;gap:8px">
-            <select name="farm_id" class="form-control" style="flex:1">
+          <div style="display:flex;gap:8px;align-items:center;width:100%">
+            <select name="farm_id" class="form-control" style="flex:1;min-width:0;width:0">
               <option value="">All Farms</option>
               {% for f in farms %}
               <option value="{{ f.id }}" {{ 'selected' if farm_id_filter==f.id|string }}>{{ f.farm_name }}</option>
               {% endfor %}
             </select>
-            <button type="submit" class="btn btn-primary" style="padding:8px 14px">
+            <button type="submit" class="btn btn-primary" style="padding:10px 14px;flex-shrink:0;white-space:nowrap">
               <i class="fas fa-filter"></i>
             </button>
           </div>
