@@ -5,11 +5,13 @@
 
 {% block head %}
 <style>
-.exp-layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+.exp-layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:18px}
+.filter-row{display:flex;gap:8px;align-items:stretch;width:100%}
+.filter-row .form-control{flex:1 1 0;width:auto!important;min-width:0}
+.filter-row .btn{flex:0 0 auto;width:auto!important;padding:10px 16px;white-space:nowrap}
 .exp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
 .exp-table-wrap table{min-width:540px;width:100%;border-collapse:collapse}
 @media(max-width:900px){
-  .exp-layout{grid-template-columns:1fr!important;gap:14px}
   .pnl-row{grid-template-columns:1fr 1fr!important}
   .form-row{grid-template-columns:1fr!important}
   .form-control{width:100%;box-sizing:border-box}
@@ -95,14 +97,14 @@
       <div class="card-body" style="padding:14px">
         <label class="form-label">Filter by Farm</label>
         <form method="GET">
-          <div style="display:flex;gap:8px;align-items:center;width:100%">
-            <select name="farm_id" class="form-control" style="flex:1;min-width:0;width:0">
+          <div class="filter-row">
+            <select name="farm_id" class="form-control">
               <option value="">All Farms</option>
               {% for f in farms %}
               <option value="{{ f.id }}" {{ 'selected' if farm_id_filter==f.id|string }}>{{ f.farm_name }}</option>
               {% endfor %}
             </select>
-            <button type="submit" class="btn btn-primary" style="padding:10px 14px;flex-shrink:0;white-space:nowrap">
+            <button type="submit" class="btn btn-primary">
               <i class="fas fa-filter"></i>
             </button>
           </div>

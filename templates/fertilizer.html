@@ -5,9 +5,8 @@
 
 {% block content %}
 <style>
-.fert-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:20px;align-items:start}
+.fert-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:20px;align-items:start}
 @media(max-width:900px){
-  .fert-grid{grid-template-columns:1fr!important;gap:14px}
   .form-control{width:100%;box-sizing:border-box}
   .btn[type="submit"]{width:100%;box-sizing:border-box}
   .npk-grid{grid-template-columns:repeat(2,1fr)!important}

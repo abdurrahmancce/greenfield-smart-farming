@@ -5,9 +5,8 @@
 
 {% block head %}
 <style>
-.growth-grid{display:grid;grid-template-columns:380px 1fr;gap:18px}
+.growth-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:18px}
 @media(max-width:900px){
-  .growth-grid{grid-template-columns:1fr!important;gap:14px}
   .form-row{grid-template-columns:1fr!important}
   .form-control{width:100%;box-sizing:border-box}
   .btn[type="submit"]{width:100%;box-sizing:border-box}
