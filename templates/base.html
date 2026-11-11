@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
@@ -112,6 +112,22 @@
   @keyframes dropIn { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
   .user-menu.open .user-dropdown { display: block; }
 
+  /* ── Language switcher (sidebar · Account) ── */
+  .lang-switch { margin: 6px 12px 8px; padding: 9px 10px 10px; border-radius: 12px;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09); }
+  .lang-title { font-size: 10.5px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase;
+    color: rgba(255,255,255,.55); margin-bottom: 7px; display: flex; align-items: center; gap: 6px; }
+  .lang-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 10px;
+    background: rgba(0,0,0,.22); }
+  .lang-opt { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 4px;
+    border-radius: 8px; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.72);
+    text-decoration: none; white-space: nowrap; transition: background .2s, color .2s, box-shadow .2s; }
+  .lang-opt:hover { background: rgba(255,255,255,.1); color: #fff; }
+  .lang-opt.active { background: linear-gradient(135deg,#43A047,#66BB6A); color: #fff;
+    box-shadow: 0 2px 10px rgba(67,160,71,.45); }
+  .lang-code { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 5px;
+    background: rgba(255,255,255,.16); letter-spacing: .3px; }
+  .lang-opt.active .lang-code { background: rgba(255,255,255,.28); }
   .ud-head {
     padding: 16px 18px; border-bottom: 1px solid var(--border);
     background: linear-gradient(135deg,rgba(46,125,50,.07),transparent);
@@ -378,22 +394,20 @@
       {% if current_user %}
       <div class="nav-section" style="margin-top:6px">Account</div>
       <a class="nav-link" href="{{ url_for('profile') }}"><i class="fas fa-user-circle"></i> My Profile</a>
-      <!-- Language toggle -->
-      <div style="display:flex;gap:6px;padding:4px 12px 2px">
-        <a href="{{ url_for('set_language', lang='en') }}"
-           style="flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:12px;font-weight:700;
-                  background:{{ 'rgba(129,196,132,.25)' if session.get('lang','en')=='en' else 'rgba(255,255,255,.06)' }};
-                  color:#fff;text-decoration:none;border:1px solid {{ 'rgba(129,196,132,.4)' if session.get('lang','en')=='en' else 'rgba(255,255,255,.12)' }};
-                  transition:all .2s">
-          🇬🇧 EN
-        </a>
-        <a href="{{ url_for('set_language', lang='bn') }}"
-           style="flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:12px;font-weight:700;
-                  background:{{ 'rgba(129,196,132,.25)' if session.get('lang','en')=='bn' else 'rgba(255,255,255,.06)' }};
-                  color:#fff;text-decoration:none;border:1px solid {{ 'rgba(129,196,132,.4)' if session.get('lang','en')=='bn' else 'rgba(255,255,255,.12)' }};
-                  transition:all .2s">
-          🇧🇩 বাংলা
-        </a>
+      <!-- Language switcher -->
+      {% set cur_lang = session.get('lang', 'en') %}
+      <div class="lang-switch" role="group" aria-label="Language">
+        <div class="lang-title"><i class="fas fa-language"></i> Language</div>
+        <div class="lang-seg">
+          <a href="{{ url_for('set_language', lang='en') }}" class="lang-opt{{ ' active' if cur_lang == 'en' }}"
+             hreflang="en" lang="en" {{ 'aria-current="true"'|safe if cur_lang == 'en' }}>
+            <span class="lang-code">EN</span><span class="lang-name">English</span>
+          </a>
+          <a href="{{ url_for('set_language', lang='bn') }}" class="lang-opt{{ ' active' if cur_lang == 'bn' }}"
+             hreflang="bn" lang="bn" {{ 'aria-current="true"'|safe if cur_lang == 'bn' }}>
+            <span class="lang-code">বাং</span><span class="lang-name">বাংলা</span>
+          </a>
+        </div>
       </div>
       <a class="nav-link" href="{{ url_for('logout') }}" style="color:#FF7F7F;opacity:.8"><i class="fas fa-sign-out-alt" style="color:#FF7F7F"></i> Logout</a>
       {% endif %}
@@ -410,8 +424,8 @@
       <a href="{{ url_for('profile') }}" class="sb-user-link">
         {% if current_user.avatar_photo %}
           <div class="sb-user-photo">
-            <img src="{{ current_user.avatar_photo }}" alt="{{ current_user.name }}"
-                 onclick="event.preventDefault();openPhotoModal('{{ current_user.avatar_photo }}')"/>
+            <img src="{{ avatar_url }}" alt="{{ current_user.name }}"
+                 onclick="event.preventDefault();openPhotoModal('{{ avatar_url }}')"/>
           </div>
         {% else %}
           <div class="sb-user-init" style="background:{{ current_user.avatar_color or '#2E7D32' }}">
@@ -446,8 +460,8 @@
           <button class="user-btn" onclick="toggleMenu()" aria-label="User menu">
             {% if current_user.avatar_photo %}
               <div class="gf-avatar" style="border-color:var(--p-pale)">
-                <img src="{{ current_user.avatar_photo }}" alt="{{ current_user.name }}"
-                     onclick="event.stopPropagation();openPhotoModal('{{ current_user.avatar_photo }}')"/>
+                <img src="{{ avatar_url }}" alt="{{ current_user.name }}"
+                     onclick="event.stopPropagation();openPhotoModal('{{ avatar_url }}')"/>
               </div>
             {% else %}
               <div class="gf-avatar" style="background:{{ current_user.avatar_color or '#2E7D32' }};border-color:rgba(255,255,255,.3)">
@@ -462,8 +476,8 @@
             <div class="ud-head">
               {% if current_user.avatar_photo %}
                 <div class="ud-photo">
-                  <img src="{{ current_user.avatar_photo }}" alt="{{ current_user.name }}"
-                       style="cursor:pointer" onclick="openPhotoModal('{{ current_user.avatar_photo }}')"/>
+                  <img src="{{ avatar_url }}" alt="{{ current_user.name }}"
+                       style="cursor:pointer" onclick="openPhotoModal('{{ avatar_url }}')"/>
                 </div>
               {% else %}
                 <div class="ud-photo-init" style="background:{{ current_user.avatar_color or '#2E7D32' }}">
@@ -595,7 +609,7 @@ document.querySelectorAll('.flash-close').forEach(btn => {
   const el = document.getElementById('liveDate');
   if (!el) return;
   const d = new Date();
-  el.textContent = d.toLocaleDateString('en-GB', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  el.textContent = d.toLocaleDateString('{{ 'bn-BD' if is_bn else 'en-GB' }}', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
 })();
 
 // ── Photo preview modal ──

@@ -2,12 +2,13 @@
 GreenField Smart Farming App — app.py v7
 Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profile Photo | Full CRUD
 """
-import os, sqlite3, json, hashlib, secrets, base64
+import os, sqlite3, json, hashlib, secrets, base64, string
 from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (Flask, render_template, request, redirect,
-                   url_for, jsonify, flash, session)
+                   url_for, jsonify, flash, session, Response, abort)
+import i18n
 
 # ── Google OAuth ──────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -182,6 +183,7 @@ def migrate_db(conn):
         ("users", "avatar_color", "TEXT DEFAULT '#2E7D32'"),
         ("users", "avatar_photo", "TEXT DEFAULT ''"),
         ("users", "google_id",    "TEXT DEFAULT ''"),
+        ("users", "account_id",   "TEXT"),
     ]
     for table, col, definition in new_cols:
         try:
@@ -192,6 +194,40 @@ def migrate_db(conn):
                 conn.rollback()
             except Exception:
                 pass
+
+
+_ACCOUNT_ALPHABET = "".join(c for c in string.ascii_uppercase + string.digits if c not in "01OIL")
+
+def _new_account_id(conn):
+    """Random, human-friendly, unique ID such as GF-7K4Q9XMA."""
+    for _ in range(20):
+        code = "GF-" + "".join(secrets.choice(_ACCOUNT_ALPHABET) for _ in range(8))
+        if not conn.execute("SELECT 1 FROM users WHERE account_id=?", (code,)).fetchone():
+            return code
+    return "GF-" + secrets.token_hex(6).upper()
+
+def ensure_account_id(conn, uid):
+    """Give a user an Account ID if they do not have one yet; return it."""
+    row = conn.execute("SELECT account_id FROM users WHERE id=?", (uid,)).fetchone()
+    if row and row["account_id"]:
+        return row["account_id"]
+    code = _new_account_id(conn)
+    conn.execute("UPDATE users SET account_id=? WHERE id=?", (code, uid))
+    conn.commit()
+    return code
+
+def backfill_account_ids(conn):
+    """Assign IDs to every existing account that has none, then enforce uniqueness."""
+    try:
+        rows = conn.execute("SELECT id FROM users WHERE account_id IS NULL OR account_id=''").fetchall()
+        for r in rows:
+            ensure_account_id(conn, r["id"])
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_account_id ON users(account_id)")
+        conn.commit()
+    except Exception as e:
+        print("[account_id backfill]", e)
+        try: conn.rollback()
+        except Exception: pass
 
 
 def init_db():
@@ -213,6 +249,7 @@ def init_db():
             avatar_color TEXT    DEFAULT '#2E7D32',
             avatar_photo TEXT    DEFAULT '',
             google_id    TEXT    DEFAULT '',
+            account_id   TEXT,
             created_at   TEXT    DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS password_resets (
@@ -297,6 +334,8 @@ def init_db():
             created_at  TEXT    DEFAULT (datetime('now'))
         );
     """)
+    migrate_db(conn)          # re-run: adds any column a pre-existing table is missing
+    backfill_account_ids(conn)  # every account gets a unique Account ID
     conn.commit()
     conn.close()
 
@@ -393,9 +432,15 @@ def current_user():
         return None
     conn = get_db()
     user = conn.execute(
-        "SELECT id, name, email, role, created_at FROM users WHERE id=?",
+        "SELECT id, name, email, role, created_at, avatar_color, avatar_photo, account_id FROM users WHERE id=?",
         (session["user_id"],)
     ).fetchone()
+    if user and not user["account_id"]:
+        ensure_account_id(conn, user["id"])
+        user = conn.execute(
+            "SELECT id, name, email, role, created_at, avatar_color, avatar_photo, account_id FROM users WHERE id=?",
+            (session["user_id"],)
+        ).fetchone()
     conn.close()
     return user
 
@@ -403,11 +448,52 @@ def current_user():
 @app.context_processor
 def inject_user():
     lang = session.get("lang", "en")
+    user = current_user()
+    avatar_url = ""
+    if user and user["avatar_photo"]:
+        photo = user["avatar_photo"]
+        ver = hashlib.md5((str(len(photo)) + photo[-200:]).encode()).hexdigest()[:8]
+        avatar_url = url_for("avatar", uid=user["id"], v=ver)
     return {
-        "current_user": current_user(),
+        "current_user": user,
         "lang": lang,
         "is_bn": lang == "bn",
+        "avatar_url": avatar_url,
+        "storage_label": "Secure Cloud Database (PostgreSQL)" if USE_POSTGRES else "Local SQLite Database",
     }
+
+# ── Language layer: every page is authored in English, translated on the way out ──
+@app.after_request
+def apply_language(resp):
+    try:
+        if (resp.status_code == 200 and resp.mimetype == "text/html"
+                and not resp.direct_passthrough and request.endpoint not in (None, "static")):
+            body = resp.get_data(as_text=True)
+            if session.get("lang") == "bn":
+                body = i18n.translate_html(body).replace('<html lang="en"', '<html lang="bn"', 1)
+            else:
+                body = i18n.polish_html(body)
+            resp.set_data(body)
+    except Exception as e:
+        print("[language layer]", e)
+    return resp
+
+# ── Profile photo, served as a cacheable image instead of inlined base64 ──
+@app.route("/avatar/<int:uid>")
+def avatar(uid):
+    if session.get("user_id") != uid:
+        abort(404)
+    conn = get_db()
+    row = conn.execute("SELECT avatar_photo FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    data = (row["avatar_photo"] if row else "") or ""
+    if not data.startswith("data:") or ";base64," not in data:
+        abort(404)
+    head, b64 = data.split(",", 1)
+    mime = head[5:].split(";")[0] or "image/jpeg"
+    resp = Response(base64.b64decode(b64), mimetype=mime)
+    resp.headers["Cache-Control"] = "private, max-age=2592000, immutable"
+    return resp
 
 # ══════════════════════════════════════════════════════════════════
 #  DOMAIN HELPERS
@@ -557,6 +643,7 @@ def register():
                 )
                 conn.commit()
                 user = conn.execute("SELECT id,name FROM users WHERE email=?",(email,)).fetchone()
+                ensure_account_id(conn, user["id"])
                 session["user_id"]   = user["id"]
                 session["user_name"] = user["name"]
                 conn.close()
@@ -577,7 +664,9 @@ def login():
         user     = conn.execute("SELECT * FROM users WHERE email=?",(email,)).fetchone()
         conn.close()
         if user and check_password_hash(user["password"], password):
+            _lang = session.get("lang")
             session.clear()
+            if _lang: session["lang"] = _lang
             session["user_id"]   = user["id"]
             session["user_name"] = user["name"]
             flash(f"👋 Welcome back, <strong>{user['name']}</strong>!", "success")
@@ -587,7 +676,9 @@ def login():
 
 @app.route("/logout")
 def logout():
+    _lang = session.get("lang")
     session.clear()
+    if _lang: session["lang"] = _lang
     flash("You have been logged out.", "success")
     return redirect(url_for("login"))
 
@@ -638,6 +729,7 @@ def google_callback():
             )
             conn.commit()
             new_user = conn.execute("SELECT id, name FROM users WHERE email=?", (email,)).fetchone()
+            ensure_account_id(conn, new_user["id"])
             uid   = new_user["id"]
             uname = new_user["name"]
 
@@ -1729,7 +1821,10 @@ def calendar_page():
 def set_language(lang):
     if lang in ("en", "bn"):
         session["lang"] = lang
-    return redirect(request.referrer or url_for("dashboard"))
+    ref = request.referrer or ""
+    if ref.startswith(request.host_url):
+        return redirect(ref)
+    return redirect(url_for("dashboard") if "user_id" in session else url_for("index"))
 
 
 # ══════════════════════════════════════════════════════════════════

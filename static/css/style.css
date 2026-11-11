@@ -113,7 +113,7 @@ body, .card, .topbar, .sidebar, .stat-card, .modal,
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 html,body{overflow-x:hidden;max-width:100%}
-body{font-family:'Poppins',sans-serif;background:var(--bg);color:var(--text);font-size:14.5px;line-height:1.6}
+body{font-family:'Poppins','Hind Siliguri',sans-serif;background:var(--bg);color:var(--text);font-size:14.5px;line-height:1.6}
 a{color:inherit;text-decoration:none}
 img{max-width:100%;display:block}
 canvas{max-width:100%!important}
@@ -796,7 +796,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 /* ── Leaflet map — keep below sidebar/modals, ensure proper sizing ── */
 #farmMap{position:relative;z-index:1;min-height:420px}
 #farmMap .leaflet-container{
-  font-family:'Poppins',sans-serif;
+  font-family:'Poppins','Hind Siliguri',sans-serif;
   border-radius:0 0 var(--r) var(--r);
   z-index:1;
 }
@@ -1204,3 +1204,7 @@ tbody tr:hover { background: linear-gradient(90deg,rgba(67,160,71,.07),rgba(67,1
     grid-template-columns:minmax(0,1fr)!important;gap:14px!important}
   .growth-grid>*,.irr-layout>*,.exp-layout>*,.fert-grid>*,.notes-grid>*,.disease-grid>*{min-width:0}
 }
+
+/* Bangla: slightly larger line-height so conjuncts (যুক্তাক্ষর) never clip */
+html[lang="bn"] body{line-height:1.75}
+html[lang="bn"] .nav-link,html[lang="bn"] .btn,html[lang="bn"] .badge{line-height:1.5}

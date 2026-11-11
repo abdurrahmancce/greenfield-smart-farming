@@ -23,10 +23,10 @@
         <div style="margin-top:-48px;margin-bottom:14px;position:relative;display:inline-block">
           <div style="width:96px;height:96px;border-radius:50%;border:4px solid var(--bg-card);box-shadow:0 6px 24px rgba(46,125,50,.3);overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;display:inline-block"
                id="avatarRing"
-               onclick="{% if user.avatar_photo %}openPhotoModal('{{ user.avatar_photo }}'){% else %}document.getElementById('photoInput').click(){% endif %}"
+               onclick="{% if user.avatar_photo %}openPhotoModal('{{ avatar_url }}'){% else %}document.getElementById('photoInput').click(){% endif %}"
                title="{% if user.avatar_photo %}Click to view photo{% else %}Click to upload photo{% endif %}">
             {% if user.avatar_photo %}
-            <img id="avatarImg" src="{{ user.avatar_photo }}" alt="Profile photo"
+            <img id="avatarImg" src="{{ avatar_url }}" alt="Profile photo"
                  style="width:100%;height:100%;object-fit:cover;display:block"/>
             <div id="avatarCircle" style="display:none;width:100%;height:100%;background:{{ user.avatar_color or '#2E7D32' }};color:#fff;font-size:36px;font-weight:800;align-items:center;justify-content:center"></div>
             {% else %}
@@ -84,7 +84,7 @@
 
         {% if user.avatar_photo %}
         <div style="margin-top:10px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">
-          <button onclick="openPhotoModal('{{ user.avatar_photo }}')" type="button"
+          <button onclick="openPhotoModal('{{ avatar_url }}')" type="button"
                   style="background:linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08));border:1.5px solid var(--border);color:var(--p-mid);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s"
                   onmouseenter="this.style.background='linear-gradient(135deg,rgba(46,125,50,.2),rgba(139,195,74,.12))'" onmouseleave="this.style.background='linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08))'">
             <i class="fas fa-search-plus"></i> View Photo
@@ -303,14 +303,14 @@
       </div>
       <div class="card-body" style="padding:14px 20px">
         {% for label, val in [
-          ('Account ID',    '#' + user.id|string),
+          ('Account ID',    user.account_id or '—'),
           ('Email',         user.email),
           ('Role',          user.role|capitalize),
           ('Phone',         user.phone or '—'),
           ('Location',      user.location or '—'),
           ('Farm Name',     user.farm_name or '—'),
           ('Member Since',  user.created_at[:16]),
-          ('Data Storage',  'Local SQLite Database'),
+          ('Data Storage',  storage_label),
         ] %}
         <div style="display:flex;justify-content:space-between;align-items:center;
              padding:9px 0;border-bottom:1px solid #EEF6EE;font-size:13px">

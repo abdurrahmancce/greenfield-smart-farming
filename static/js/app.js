@@ -182,7 +182,8 @@ window.toast = toast;
 function initDate() {
   const el = document.getElementById("liveDate");
   if (!el) return;
-  el.textContent = new Intl.DateTimeFormat("en-GB", {
+  const loc = (document.documentElement.lang || "en").toLowerCase().startsWith("bn") ? "bn-BD" : "en-GB";
+  el.textContent = new Intl.DateTimeFormat(loc, {
     weekday:"short", day:"numeric", month:"short", year:"numeric"
   }).format(new Date());
 }

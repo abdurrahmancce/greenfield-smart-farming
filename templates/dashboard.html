@@ -10,7 +10,7 @@
   <div class="stat-card"><div class="stat-icon green"><i class="fas fa-tractor"></i></div><div class="stat-info"><h3>{{ total_farms }}</h3><p>{{ 'মোট খামার' if is_bn else 'Total Farms' }}</p></div></div>
   <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-seedling"></i></div><div class="stat-info"><h3>{{ total_crops }}</h3><p>{{ 'ফসলের ধরন' if is_bn else 'Crop Varieties' }}</p></div></div>
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-ruler-combined"></i></div><div class="stat-info"><h3>{{ total_area }} ac</h3><p>{{ 'মোট জমি' if is_bn else 'Total Area' }}</p></div></div>
-  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-thermometer-half"></i></div><div class="stat-info"><h3>{{ weather.temperature }}°C</h3><p>{{ weather.city }} {{ 'তাপমাত্রা' if is_bn else 'Temp' }}</p></div></div>
+  <div class="stat-card"><div class="stat-icon amber"><i class="fas fa-thermometer-half"></i></div><div class="stat-info"><h3>{{ weather.temperature }}°C</h3><p>{{ weather.city }} Temp</p></div></div>
   <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-book-open"></i></div><div class="stat-info"><h3>{{ total_notes }}</h3><p>{{ 'খামার নোট' if is_bn else 'Farm Notes' }}</p></div></div>
 </div>
 

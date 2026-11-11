@@ -61,6 +61,26 @@
 @media(max-width:400px){
   .pnl-box{grid-template-columns:1fr!important}
 }
+
+/* ── Dark mode (screen only — the printed / downloaded report stays light) ── */
+@media screen{
+html[data-theme="dark"] .rp-title,html[data-theme="dark"] .rp-section-title,html[data-theme="dark"] .rp-farm-name{color:#81C784}
+html[data-theme="dark"] .rp-section-title{border-bottom-color:var(--border)}
+html[data-theme="dark"] .rp-subtitle,html[data-theme="dark"] .rp-footer,html[data-theme="dark"] .pnl-lbl,html[data-theme="dark"] .rp-farm-row{color:var(--muted)}
+html[data-theme="dark"] .rp-farm-row strong{color:var(--text)}
+html[data-theme="dark"] .rp-farm-card{background:rgba(255,255,255,.04);border-color:var(--border)}
+html[data-theme="dark"] .pnl-inc{background:rgba(76,175,80,.14);border-color:rgba(76,175,80,.4)}
+html[data-theme="dark"] .pnl-exp,html[data-theme="dark"] .pnl-pft.loss{background:rgba(239,83,80,.13);border-color:rgba(239,83,80,.4)}
+html[data-theme="dark"] .pnl-pft{background:rgba(66,165,245,.13);border-color:rgba(66,165,245,.4)}
+html[data-theme="dark"] .rp-table th{background:rgba(129,199,132,.14);color:#A5D6A7}
+html[data-theme="dark"] .rp-table td{color:var(--text);border-bottom-color:var(--border);background:transparent}
+html[data-theme="dark"] .rp-table tbody tr:nth-child(even) td{background:rgba(255,255,255,.035)}
+html[data-theme="dark"] .rp-footer{border-top-color:var(--border)}
+html[data-theme="dark"] .report-paper [style*="color:#2E7D32"]{color:#81C784!important}
+html[data-theme="dark"] .report-paper [style*="color:#C62828"]{color:#FF8A80!important}
+html[data-theme="dark"] .report-paper [style*="color:#1565C0"]{color:#64B5F6!important}
+html[data-theme="dark"] .report-paper .stage-pill{background:rgba(129,199,132,.18);color:#A5D6A7}
+}
 </style>
 {% endblock %}
 

@@ -24,7 +24,13 @@
 .cal-card-body{padding:12px 16px;font-size:12.5px;color:var(--muted)}
 .now-banner{background:linear-gradient(135deg,#E8F5E9,#F0FFF0);border:1.5px solid #A5D6A7;border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:700;color:#2E7D32;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .season-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
-.season-card{border-radius:10px;padding:12px;text-align:center;border:1px solid var(--border)}
+.season-card{border-radius:10px;padding:12px;text-align:center;border:1px solid var(--border);background:var(--tone,#fff)}
+.season-card .sc-name{font-size:13px;font-weight:700;color:#263238;margin:4px 0}
+.season-card .sc-months{font-size:11px;color:#546E7A}
+/* Dark mode: keep each season's tint, but on a dark surface so the text stays readable */
+html[data-theme="dark"] .season-card{background:rgba(255,255,255,.05);background:color-mix(in srgb,var(--tone) 16%,var(--bg-card));border-color:rgba(255,255,255,.16)}
+html[data-theme="dark"] .season-card .sc-name{color:#F1F8E9}
+html[data-theme="dark"] .season-card .sc-months{color:#B7CDB8}
 .filter-bar2{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .filter-btn2{padding:5px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:all .18s}
 .filter-btn2.active,.filter-btn2:hover{background:var(--p-mid);color:#fff;border-color:var(--p-mid)}
@@ -40,10 +46,10 @@
     ("Kharif-II (Monsoon)", "Jun–Oct", "🌧️", "#E8F5E9"),
     ("Year-round", "All months", "🌿", "#F3E5F5")
   ] %}
-  <div class="season-card" style="background:{{ color }}">
+  <div class="season-card" style="--tone:{{ color }}">
     <div style="font-size:22px">{{ emoji }}</div>
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin:4px 0">{{ season }}</div>
-    <div style="font-size:11px;color:var(--muted)">{{ months }}</div>
+    <div class="sc-name">{{ season }}</div>
+    <div class="sc-months">{{ months }}</div>
   </div>
   {% endfor %}
 </div>
