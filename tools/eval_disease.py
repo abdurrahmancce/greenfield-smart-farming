@@ -17,16 +17,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import vision
 
 def norm(t): return set(re.findall(r"[a-z]{3,}", re.sub(r"\([^)]*\)", " ", t.lower().replace("_", " "))))
-STOP = {"leaf","disease","plant","the","and","spot","tomato","potato","grape","apple","corn","rice"}
+STOP = {"leaf","disease","plant","the","and","spot","tomato","potato","grape","apple","corn","rice","pepper","bell","maize"}
 
 def correct(label, res):
-    healthy_label = "healthy" in label.lower()
-    if healthy_label: return res["health_status"] == "healthy"
+    """Strict: every distinctive word of the true label must appear in the AI's diagnosis
+    (so 'Late blight' is NOT accepted for 'Early blight')."""
+    if "healthy" in label.lower(): return res["health_status"] == "healthy"
     if res["health_status"] == "healthy": return False
-    a = norm(label) - STOP
-    cands = [res["primary_diagnosis"]] + [o["name"] for o in res.get("other_possibilities", [])[:0]]
-    b = set().union(*[norm(c) for c in cands]) - STOP
-    return bool(a & b)
+    need = norm(label) - STOP
+    got = norm(res["primary_diagnosis"])
+    if "turcicum" in got: got.add("northern")            # same disease, other name
+    if "puccinia" in got: got.add("rust")
+    return bool(need) and need <= got
 
 def main():
     root = sys.argv[1]
