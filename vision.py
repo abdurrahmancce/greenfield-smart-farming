@@ -20,10 +20,10 @@ import requests
 
 # Newer Google projects cannot use gemini-2.5-*; try current models in order (first one that exists wins).
 GEMINI_MODELS = [m.strip() for m in os.environ.get(
-    "GEMINI_MODEL", "gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-2.5-flash").split(",") if m.strip()]
+    "GEMINI_MODEL", "gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3.6-flash,gemini-2.5-flash").split(",") if m.strip()]
 _good_model = None
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
-TIMEOUT = 40            # per request
+TIMEOUT = 35            # per request
 DEADLINE = 85           # total seconds for all fallbacks (gunicorn kills a worker at 120s)
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
 MAX_BYTES = 6 * 1024 * 1024
@@ -99,39 +99,57 @@ class VisionError(Exception):
 
 
 def _call_gemini(img_b64, mime, prompt):
+    """Try current Gemini models in order. Skips a model that is missing (404), rejects our options (400),
+    is overloaded (5xx) or too slow (timeout) and moves on to the next, within an overall deadline."""
     global _good_model
-    payload = {
+    import time as _t
+    base = {
         "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime, "data": img_b64}}]}],
         "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }
     order = ([_good_model] if _good_model else []) + [m for m in GEMINI_MODELS if m != _good_model]
-    last = None
-    import time as _t
-    start = _t.time()
+    start, last = _t.time(), "no model tried"
     for model in order:
-        if _t.time() - start > DEADLINE - 10:
-            break
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        r = requests.post(url, headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]}, json=payload, timeout=TIMEOUT)
-        if r.status_code in (404, 400):          # model not available for this key -> try the next one
-            print(f"[vision] {model} -> {r.status_code}: {r.text[:200]}")
-            last = r.status_code
-            continue
-        if r.status_code == 429:
-            raise VisionError("The free AI quota is busy right now. Please try again in a minute.")
-        if r.status_code in (401, 403):
-            print("[vision] auth error:", r.text[:200])
-            raise VisionError("The AI key was rejected. The site owner should check GEMINI_API_KEY.")
-        if r.status_code != 200:
-            print(f"[vision] {model} -> {r.status_code}: {r.text[:200]}")
-            raise VisionError(f"AI service error ({r.status_code}).")
-        try:
-            parts = r.json()["candidates"][0]["content"]["parts"]
-            _good_model = model
-            return "".join(p.get("text", "") for p in parts if not p.get("thought"))
-        except (KeyError, IndexError, ValueError):
-            raise VisionError("The AI could not analyse this image. Try a clearer photo.")
-    raise VisionError(f"AI service error ({last or 404}): no available Gemini model for this key.")
+        for fast in (True, False):          # first ask for low "thinking" (much quicker); retry plain if rejected
+            left = DEADLINE - (_t.time() - start)
+            if left < 8:
+                raise VisionError("The AI took too long to answer. Please try again.")
+            payload = json.loads(json.dumps(base))
+            if fast:
+                payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "low"}
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            t0 = _t.time()
+            try:
+                r = requests.post(url, headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
+                                  json=payload, timeout=min(TIMEOUT, left))
+            except requests.Timeout:
+                print(f"[vision] {model} timed out after {_t.time()-t0:.0f}s")
+                last = "timeout"
+                break                        # next model
+            print(f"[vision] {model} fast={fast} -> {r.status_code} in {_t.time()-t0:.1f}s")
+            if r.status_code == 400 and fast:
+                print("[vision]", r.text[:200]); continue      # retry same model without thinking option
+            if r.status_code in (400, 404) or r.status_code >= 500:
+                print("[vision]", r.text[:200]); last = r.status_code; break
+            if r.status_code == 429:
+                raise VisionError("The free AI quota is busy right now. Please try again in a minute.")
+            if r.status_code in (401, 403):
+                print("[vision] auth error:", r.text[:200])
+                raise VisionError("The AI key was rejected. The site owner should check GEMINI_API_KEY.")
+            if r.status_code != 200:
+                raise VisionError(f"AI service error ({r.status_code}).")
+            try:
+                parts = r.json()["candidates"][0]["content"]["parts"]
+                text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+            except (KeyError, IndexError, ValueError):
+                last = "empty"; break
+            if text.strip():
+                _good_model = model
+                return text
+            last = "empty"; break
+    if last == "timeout":
+        raise VisionError("The AI took too long to answer. Please try again.")
+    raise VisionError(f"AI service error ({last}): no Gemini model answered.")
 
 
 def _call_anthropic(img_b64, mime, prompt):
