@@ -150,7 +150,7 @@ BN = {
     # ── Disease detector ─────────────────────────────────────────────
     "Symptom Checker": "লক্ষণ যাচাই",
     "AI Diagnosis": "এআই নির্ণয়",
-    "Describe what you see on the plant — leaves, stem, fruit or roots.": "গাছে যা দেখছেন তা লিখুন — পাতা, কাণ্ড, ফল বা শিকড়।",
+    "Describe what you see on the plant — leaves, stem, fruit or roots. This is a simple keyword match, not AI — for a reliable answer use Photo Diagnosis above.": "গাছে যা দেখছেন তা লিখুন — পাতা, কাণ্ড, ফল বা শিকড়। এটি সাধারণ কীওয়ার্ড মিলানো, AI নয় — নির্ভরযোগ্য ফলাফলের জন্য উপরের ছবি দিয়ে নির্ণয় ব্যবহার করুন।",
     "Crop Type *": "ফসলের ধরন *",
     "— Select crop —": "— ফসল বেছে নিন —",
     "🌾 Rice": "🌾 ধান", "🌿 Wheat": "🌿 গম", "🌽 Maize": "🌽 ভুট্টা", "🍅 Tomato": "🍅 টমেটো",

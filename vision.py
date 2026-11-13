@@ -98,7 +98,7 @@ class VisionError(Exception):
     pass
 
 
-def _call_gemini(img_b64, mime, prompt):
+def _call_gemini(img_b64, mime, prompt, models=None):
     """Try current Gemini models in order. Skips a model that is missing (404), rejects our options (400),
     is overloaded (5xx) or too slow (timeout) and moves on to the next, within an overall deadline."""
     global _good_model
@@ -107,7 +107,7 @@ def _call_gemini(img_b64, mime, prompt):
         "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime, "data": img_b64}}]}],
         "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }
-    order = ([_good_model] if _good_model else []) + [m for m in GEMINI_MODELS if m != _good_model]
+    order = list(models) if models else ([_good_model] if _good_model else []) + [m for m in GEMINI_MODELS if m != _good_model]
     start, last = _t.time(), "no model tried"
     for model in order:
         for fast in (True, False):          # first ask for low "thinking" (much quicker); retry plain if rejected
@@ -144,7 +144,8 @@ def _call_gemini(img_b64, mime, prompt):
             except (KeyError, IndexError, ValueError):
                 last = "empty"; break
             if text.strip():
-                _good_model = model
+                if not models:
+                    _good_model = model
                 return text
             last = "empty"; break
     if last == "timeout":
@@ -258,6 +259,64 @@ def clean(raw):
     return out
 
 
+_STOP = {"disease", "leaf", "leaves", "spot", "spots", "blight", "damage", "infection", "of", "the", "and", "or",
+         "fungus", "virus", "symptoms", "disorder", "rot", "mite", "mites"}
+
+
+def _sci(name):
+    m = re.search(r"\(([^)]+)\)", name or "")
+    return re.sub(r"[^a-z ]", "", m.group(1).lower()).strip() if m else ""
+
+
+def _tokens(name):
+    base = re.sub(r"\([^)]*\)", " ", (name or "").lower())
+    base = base.replace("erineum", "blister").replace("erinose", "blister")      # same mite, two names
+    return {w for w in re.findall(r"[a-z]+", base) if w not in _STOP and len(w) > 2}
+
+
+def _same_dx(a, b):
+    """True if two diagnosis names clearly refer to the same problem."""
+    if not a or not b:
+        return False
+    sa, sb = _sci(a), _sci(b)
+    if sa and sb and (sa == sb or sa.split()[0] == sb.split()[0]):
+        return True
+    ta, tb = _tokens(a), _tokens(b)
+    if ta and tb and len(ta & tb) / len(ta | tb) >= 0.5:
+        return True
+    return False
+
+
+def _listed(name, res):
+    return any(_same_dx(name, o["name"]) for o in res.get("other_possibilities", []))
+
+
+def combine(a, b):
+    """Cross-check two independent model answers and turn their (self-reported) confidences into one
+    conservative figure. Agreement raises trust; disagreement lowers it and asks for an expert."""
+    if b is None:
+        a["confidence"] = min(a["confidence"], 80)
+        a["verification"] = {"checks": 1, "agreement": "single"}
+        return a
+    both_healthy = a["health_status"] == "healthy" and b["health_status"] == "healthy"
+    same_status = a["health_status"] == b["health_status"]
+    if both_healthy or (same_status and _same_dx(a["primary_diagnosis"], b["primary_diagnosis"])):
+        level = "agree"
+        a["confidence"] = min(a["confidence"], b["confidence"], 92)
+    elif _listed(b["primary_diagnosis"], a) or _listed(a["primary_diagnosis"], b):
+        level = "partial"
+        a["confidence"] = min(a["confidence"], b["confidence"], 70)
+    else:
+        level = "disagree"
+        a["confidence"] = min(a["confidence"], b["confidence"], 55)
+        a["needs_expert"] = True
+        if b["primary_diagnosis"] and not _listed(b["primary_diagnosis"], a):
+            a["other_possibilities"] = (a["other_possibilities"] + [
+                {"name": b["primary_diagnosis"], "confidence": min(b["confidence"], 55)}])[:3]
+    a["verification"] = {"checks": 2, "agreement": level}
+    return a
+
+
 def analyze(image_bytes, crop="", notes="", lang="en"):
     prov = provider()
     if not prov:
@@ -270,11 +329,26 @@ def analyze(image_bytes, crop="", notes="", lang="en"):
     b64 = base64.b64encode(image_bytes).decode()
     prompt = build_prompt(crop, notes[:600], lang)
     try:
-        text = _call_gemini(b64, mime, prompt) if prov == "gemini" else _call_anthropic(b64, mime, prompt)
+        if prov == "gemini":
+            from concurrent.futures import ThreadPoolExecutor
+            second = next((m for m in GEMINI_MODELS[1:] if m), None)
+            with ThreadPoolExecutor(max_workers=2) as ex:
+                fa = ex.submit(_call_gemini, b64, mime, prompt)
+                fb = ex.submit(_call_gemini, b64, mime, prompt, [second]) if second else None
+                text_a = fa.result()
+                result = clean(_extract_json(text_a))
+                other = None
+                if fb is not None:
+                    try:
+                        other = clean(_extract_json(fb.result()))
+                    except Exception as e:           # second opinion is optional
+                        print("[vision] second check failed:", repr(e))
+            result = combine(result, other)
+        else:
+            result = combine(clean(_extract_json(_call_anthropic(b64, mime, prompt))), None)
     except requests.Timeout:
         raise VisionError("The AI took too long to answer. Please try again.")
     except requests.RequestException:
         raise VisionError("Could not reach the AI service. Check the connection and try again.")
-    result = clean(_extract_json(text))
     result["provider"] = prov
     return result

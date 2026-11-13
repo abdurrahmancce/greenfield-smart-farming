@@ -32,7 +32,7 @@
     <div class="card">
       <div class="card-header"><h2><i class="fas fa-microscope"></i> Symptom Checker</h2><span class="badge badge-green">Symptom Match</span></div>
       <div class="card-body">
-        <p class="text-muted fs-12" style="margin-bottom:16px">Describe what you see on the plant — leaves, stem, fruit or roots.</p>
+        <p class="text-muted fs-12" style="margin-bottom:16px">Describe what you see on the plant — leaves, stem, fruit or roots. This is a simple keyword match, not AI — for a reliable answer use Photo Diagnosis above.</p>
         <form id="diseaseForm">
           <div class="form-group"><label>Crop Type *</label>
             <select id="cropType" class="form-control" required>
@@ -297,10 +297,17 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     if(d.plant_identified){body.appendChild(el('p','fs-13 text-muted',T('Plant: ','গাছ: ')+d.plant_identified))}
     if(d.health_status!=='unclear'&&d.is_plant){
       const row=el('div');row.style.cssText='display:flex;justify-content:space-between;margin:6px 0';
-      row.append(el('span','fs-13 text-muted',T('AI confidence','AI-এর নিশ্চয়তা')),el('span','fs-13 fw-600',d.confidence+'%'));
-      const track=el('div');track.style.cssText='background:var(--border);border-radius:8px;height:10px;overflow:hidden;margin-bottom:14px';
+      const lvl=d.confidence>=80?T('High','উচ্চ'):d.confidence>=60?T('Medium','মাঝারি'):T('Low','কম');
+      row.append(el('span','fs-13 text-muted',T('AI certainty (estimate)','AI-এর নিশ্চয়তা (অনুমান)')),el('span','fs-13 fw-600',lvl+' · '+d.confidence+'%'));
+      const track=el('div');track.style.cssText='background:var(--border);border-radius:8px;height:10px;overflow:hidden;margin-bottom:8px';
       const bar=el('div');bar.style.cssText='height:100%;border-radius:8px;background:'+(d.confidence>=75?'#2e7d32':d.confidence>=50?'#f9a825':'#c62828')+';width:'+d.confidence+'%';
       track.appendChild(bar);body.append(row,track);
+      const v=d.verification||{};
+      const vmsg={agree:['✅',T('Two independent AI checks agree on this diagnosis.','দুটি আলাদা AI যাচাই একই নির্ণয়ে একমত।')],
+        partial:['🟡',T('Two AI checks partly agree — the problem is in the same family but not certain.','দুটি AI যাচাই আংশিক একমত — সমস্যাটি একই ধরনের, তবে নিশ্চিত নয়।')],
+        disagree:['⚠️',T('Two AI checks gave different answers, so certainty is capped. Please confirm with an expert.','দুটি AI যাচাই ভিন্ন উত্তর দিয়েছে, তাই নিশ্চয়তা কমিয়ে দেখানো হয়েছে। বিশেষজ্ঞের সাথে নিশ্চিত হোন।')],
+        single:['ℹ️',T('Only one AI check was available this time, so certainty is capped at 80%.','এবার একটিমাত্র AI যাচাই পাওয়া গেছে, তাই নিশ্চয়তা সর্বোচ্চ ৮০% দেখানো হয়েছে।')]}[v.agreement];
+      if(vmsg){const vp=el('p','fs-12 text-muted',vmsg[0]+' '+vmsg[1]);vp.style.margin='0 0 12px';body.appendChild(vp)}
       if(d.severity&&d.severity!=='None'){
         const sv={Low:T('Low','কম'),Medium:T('Medium','মাঝারি'),High:T('High','উচ্চ')}[d.severity];
         body.appendChild(el('p','fs-13',T('Severity: ','তীব্রতা: ')+sv));
@@ -323,7 +330,7 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
         [T('Show this to your local Sub-Assistant Agriculture Officer (DAE) or call the Krishi Call Center: 16123.','আপনার এলাকার উপসহকারী কৃষি কর্মকর্তা (DAE)-কে দেখান অথবা কৃষি কল সেন্টারে ফোন করুন: ১৬১২৩।')],'pr-warn'));
     }
     const act=actions(d);if(act)body.appendChild(act);
-    const note=el('p','fs-12 text-muted',T('AI-generated from a single photo — it can be wrong, as many plant problems look alike. Use it as guidance, not a final verdict. Always follow pesticide label instructions.','একটি ছবি থেকে AI-এর তৈরি — ভুল হতে পারে, কারণ অনেক গাছের সমস্যা দেখতে একই রকম। এটিকে পরামর্শ হিসেবে নিন, চূড়ান্ত সিদ্ধান্ত নয়। কীটনাশকের লেবেলের নির্দেশনা সবসময় মেনে চলুন।'));
+    const note=el('p','fs-12 text-muted',T('AI-generated from a single photo, where possible cross-checked by a second AI model. The % is the AI\'s own estimate, not a lab test, and it can be wrong because many plant problems look alike. Use it as guidance, not a final verdict. Always follow pesticide label instructions.','একটি ছবি থেকে AI তৈরি করেছে এবং সম্ভব হলে দ্বিতীয় একটি AI মডেল যাচাই করেছে। শতাংশটি AI-এর নিজের অনুমান, ল্যাবরেটরি পরীক্ষা নয়, আর অনেক গাছের সমস্যা দেখতে একই রকম হওয়ায় ভুল হতে পারে। এটিকে পরামর্শ হিসেবে নিন, চূড়ান্ত সিদ্ধান্ত নয়। কীটনাশকের লেবেলের নির্দেশনা সবসময় মেনে চলুন।'));
     note.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--border)';body.appendChild(note);
     card.appendChild(body);box.appendChild(card);
     box.scrollIntoView({behavior:'smooth',block:'start'});
