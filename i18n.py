@@ -134,6 +134,16 @@ BN = {
     "North & Central": "উত্তর ও মধ্যাঞ্চল", "South Bangladesh": "দক্ষিণ বাংলাদেশ",
     "Hilly regions": "পার্বত্য অঞ্চল",
 
+    # ── Photo diagnosis ──────────────────────────────────────────────
+    "Photo Diagnosis": "ছবি দিয়ে রোগ নির্ণয়",
+    "AI Vision": "এআই ভিশন",
+    "Take or upload a clear photo of the affected leaf, stem, fruit or whole plant. Optional — you can also use the symptom checker below.": "আক্রান্ত পাতা, কাণ্ড, ফল বা পুরো গাছের একটি স্পষ্ট ছবি তুলুন বা আপলোড করুন। এটি ঐচ্ছিক — নিচের লক্ষণ যাচাইও ব্যবহার করতে পারেন।",
+    "Take Photo": "ছবি তুলুন",
+    "Upload Photo": "ছবি আপলোড",
+    "Analyze Photo": "ছবি বিশ্লেষণ করুন",
+    "Fill the frame with the affected part, in daylight": "দিনের আলোয় আক্রান্ত অংশটি ফ্রেম ভরে তুলুন",
+    "Keep the photo sharp — avoid shadows and blur": "ছবি স্পষ্ট রাখুন — ছায়া ও ঝাপসা এড়িয়ে চলুন",
+    "Add the crop and any notes below for a better result": "ভালো ফলাফলের জন্য নিচে ফসল ও অতিরিক্ত তথ্য দিন",
     # ── Disease detector ─────────────────────────────────────────────
     "Symptom Checker": "লক্ষণ যাচাই",
     "AI Diagnosis": "এআই নির্ণয়",
@@ -835,6 +845,8 @@ BN.update({
     "Type DELETE to confirm account deletion.": "অ্যাকাউন্ট মুছতে নিশ্চিত করার জন্য DELETE লিখুন।",
     # titles & subtitles
     "Crop Disease Detection": "ফসলের রোগ নির্ণয়",
+    "Upload a photo or describe symptoms to identify diseases and get treatment advice.": "ছবি আপলোড করুন বা লক্ষণ লিখে রোগ শনাক্ত করুন এবং প্রতিকারের পরামর্শ নিন।",
+    "Symptom Match": "লক্ষণ মিলানো",
     "Describe symptoms to identify diseases and get treatment advice.": "লক্ষণ লিখে রোগ শনাক্ত করুন এবং প্রতিকারের পরামর্শ নিন।",
     "Farm Expense Tracker": "খামারের আয়-ব্যয় ট্র্যাকার",
     "Track income, expenses & profit-loss per farm": "প্রতিটি খামারের আয়, ব্যয় ও লাভ-ক্ষতির হিসাব রাখুন",

@@ -9,6 +9,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (Flask, render_template, request, redirect,
                    url_for, jsonify, flash, session, Response, abort)
 import i18n
+import vision
+import time
 
 # ── Google OAuth ──────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -32,6 +34,7 @@ MAIL_ENABLED  = bool(MAIL_SERVER and MAIL_USERNAME and MAIL_PASSWORD)
 APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024   # photo uploads (profile photo / disease photo)
 app.secret_key = os.environ.get("SECRET_KEY", "gf_smartfarm_dev_secret_2024")
 
 # ── Google OAuth setup ─────────────────────────────────────────────
@@ -1863,6 +1866,66 @@ def report_page():
         irrigations=irrigations, expenses=expenses,
         total_income=total_income, total_expense=total_expense,
         profit=profit, today=today)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PWA / uptime helpers
+# ══════════════════════════════════════════════════════════════════
+@app.route("/healthz")
+def healthz():
+    """Tiny, DB-free endpoint for uptime monitors (keeps the free instance awake)."""
+    r = Response("ok", mimetype="text/plain")
+    r.headers["Cache-Control"] = "no-store"
+    return r
+
+@app.route("/sw.js")
+def service_worker():
+    """Served from the site root so the worker controls every page (scope '/')."""
+    path = os.path.join(app.static_folder, "sw.js")
+    with open(path, encoding="utf-8") as fh:
+        r = Response(fh.read(), mimetype="application/javascript")
+    r.headers["Cache-Control"] = "no-cache"
+    r.headers["Service-Worker-Allowed"] = "/"
+    return r
+
+@app.route("/offline")
+def offline_page():
+    return render_template("offline.html")
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PHOTO-BASED DISEASE ANALYSIS (vision AI)
+# ══════════════════════════════════════════════════════════════════
+_vision_hits = {}          # user_id -> [timestamps]; simple per-user rate limit
+VISION_LIMIT, VISION_WINDOW = 12, 3600
+
+@app.route("/api/disease-image", methods=["POST"])
+@login_required
+def api_disease_image():
+    uid = session["user_id"]
+    now = time.time()
+    hits = [t for t in _vision_hits.get(uid, []) if now - t < VISION_WINDOW]
+    if len(hits) >= VISION_LIMIT:
+        return jsonify({"error": "You have reached the hourly photo-analysis limit. Please try again later."}), 429
+    f = request.files.get("image")
+    if not f:
+        return jsonify({"error": "Please choose or take a photo first."}), 400
+    data = f.read(vision.MAX_BYTES + 1)
+    crop = (request.form.get("crop_type") or "")[:40]
+    notes = (request.form.get("notes") or "")[:600]
+    lang = "bn" if session.get("lang") == "bn" else "en"
+    if not vision.provider():
+        return jsonify({"error": "Photo analysis is not enabled on this server yet (AI key missing).",
+                        "not_configured": True}), 503
+    try:
+        hits.append(now); _vision_hits[uid] = hits
+        result = vision.analyze(data, crop, notes, lang)
+    except vision.VisionError as e:
+        return jsonify({"error": str(e)}), 422
+    except Exception as e:
+        print("[vision]", repr(e))
+        return jsonify({"error": "Something went wrong while analysing the photo."}), 500
+    return jsonify(result)
 
 
 # ── Entry ─────────────────────────────────────────────────────────

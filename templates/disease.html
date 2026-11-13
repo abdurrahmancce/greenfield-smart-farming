@@ -1,12 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Crop Disease Detection{% endblock %}
 {% block page_title %}Crop Disease Detection{% endblock %}
-{% block page_sub %}Describe symptoms to identify diseases and get treatment advice.{% endblock %}
+{% block page_sub %}Upload a photo or describe symptoms to identify diseases and get treatment advice.{% endblock %}
 {% block content %}
 <div class="disease-grid" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:20px;align-items:start">
   <div>
+    <div class="card" id="photoCard" style="margin-bottom:16px">
+      <div class="card-header"><h2><i class="fas fa-camera"></i> Photo Diagnosis</h2><span class="badge badge-green">AI Vision</span></div>
+      <div class="card-body">
+        <p class="text-muted fs-12" style="margin-bottom:12px">Take or upload a clear photo of the affected leaf, stem, fruit or whole plant. Optional — you can also use the symptom checker below.</p>
+        <input type="file" id="photoCamera" accept="image/*" capture="environment" hidden>
+        <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp" hidden>
+        <div class="photo-actions">
+          <button type="button" class="btn btn-outline" id="btnCamera"><i class="fas fa-camera"></i> Take Photo</button>
+          <button type="button" class="btn btn-outline" id="btnUpload"><i class="fas fa-image"></i> Upload Photo</button>
+        </div>
+        <div id="photoPreviewWrap" style="display:none;margin-top:14px">
+          <div style="position:relative">
+            <img id="photoPreview" alt="Selected plant photo" style="width:100%;max-height:300px;object-fit:contain;border-radius:12px;background:var(--bg-secondary);border:1px solid var(--border)">
+            <button type="button" id="photoClear" aria-label="Remove photo" style="position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer"><i class="fas fa-times"></i></button>
+          </div>
+          <button type="button" class="btn btn-primary" id="analyzePhotoBtn" style="width:100%;margin-top:12px"><i class="fas fa-microscope"></i> Analyze Photo</button>
+        </div>
+        <ul class="photo-tips">
+          <li>Fill the frame with the affected part, in daylight</li>
+          <li>Keep the photo sharp — avoid shadows and blur</li>
+          <li>Add the crop and any notes below for a better result</li>
+        </ul>
+      </div>
+    </div>
     <div class="card">
-      <div class="card-header"><h2><i class="fas fa-microscope"></i> Symptom Checker</h2><span class="badge badge-green">AI Diagnosis</span></div>
+      <div class="card-header"><h2><i class="fas fa-microscope"></i> Symptom Checker</h2><span class="badge badge-green">Symptom Match</span></div>
       <div class="card-body">
         <p class="text-muted fs-12" style="margin-bottom:16px">Describe what you see on the plant — leaves, stem, fruit or roots.</p>
         <form id="diseaseForm">
@@ -57,6 +81,7 @@
     </div>
   </div>
   <div id="resultsPanel">
+    <div id="photoResult" style="display:none"></div>
     <div class="card" id="emptyState">
       <div class="card-body" style="text-align:center;padding:60px 24px">
         <div style="font-size:64px;margin-bottom:16px">🌿</div>
@@ -116,6 +141,15 @@
 <style>
 .chip{padding:4px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:20px;font-size:12px;cursor:pointer;color:var(--text-secondary);transition:all .15s}
 .chip:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.photo-actions .btn{justify-content:center}
+.photo-tips{margin:14px 0 0;padding-left:18px;color:var(--text-secondary);font-size:12.5px;line-height:1.7}
+.pr-sec{margin-top:14px;border-radius:10px;padding:14px 16px;border:1px solid var(--border);background:var(--bg-secondary)}
+.pr-sec h4{margin:0 0 8px;font-size:14px;color:var(--text-primary)}
+.pr-sec ul{margin:0;padding-left:18px;line-height:1.65;font-size:13px;color:var(--text-primary)}
+.pr-warn{background:rgba(245,127,23,.12);border-color:rgba(245,127,23,.4)}
+.pr-ok{background:rgba(46,125,50,.1);border-color:rgba(46,125,50,.3)}
+.pr-info{background:rgba(21,101,192,.09);border-color:rgba(21,101,192,.3)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:768px){div[style*="grid-template-columns:1fr 1.4fr"]{grid-template-columns:1fr!important}}
 </style>
@@ -155,5 +189,112 @@ document.getElementById('diseaseForm').addEventListener('submit',async function(
   document.getElementById('detectBtn').disabled=false;
 });
 function resetForm(){document.getElementById('symptoms').value='';document.getElementById('additionalInfo').value='';document.getElementById('resultCard').style.display='none';document.getElementById('emptyState').style.display='block'}
+
+/* ───────── Photo diagnosis ───────── */
+(function(){
+  const BN=document.documentElement.lang==='bn';
+  const T=(en,bn)=>BN?bn:en;
+  const $=id=>document.getElementById(id);
+  let photoBlob=null;
+  const cam=$('photoCamera'),file=$('photoFile');
+  $('btnCamera').onclick=()=>cam.click();
+  $('btnUpload').onclick=()=>file.click();
+  $('photoClear').onclick=clearPhoto;
+  cam.onchange=()=>pick(cam.files[0]);file.onchange=()=>pick(file.files[0]);
+
+  function clearPhoto(){photoBlob=null;cam.value='';file.value='';$('photoPreviewWrap').style.display='none';$('photoResult').style.display='none';}
+  // Shrink big phone photos in the browser (faster upload, same diagnosis quality)
+  function pick(f){
+    if(!f)return;
+    if(!/^image\//.test(f.type)){alert(T('Please choose an image file.','অনুগ্রহ করে একটি ছবি বেছে নিন।'));return}
+    const img=new Image(),url=URL.createObjectURL(f);
+    img.onload=()=>{
+      const max=1280,r=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      c.toBlob(b=>{photoBlob=b;$('photoPreview').src=URL.createObjectURL(b);$('photoPreviewWrap').style.display='block';
+        $('photoResult').style.display='none';},'image/jpeg',0.85);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror=()=>{alert(T('This image could not be read. Try another photo.','ছবিটি পড়া যায়নি। অন্য একটি ছবি দিন।'));URL.revokeObjectURL(url)};
+    img.src=url;
+  }
+
+  const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
+  function section(title,items,cls){
+    if(!items||!items.length)return null;
+    const d=el('div','pr-sec '+(cls||'')),h=el('h4',null,title),ul=el('ul');
+    items.forEach(i=>ul.appendChild(el('li',null,i)));d.append(h,ul);return d;
+  }
+
+  function render(d){
+    const box=$('photoResult');box.innerHTML='';box.style.display='block';
+    $('emptyState').style.display='none';$('resultCard').style.display='none';
+    const card=el('div','card'),head=el('div','card-header'),body=el('div','card-body');
+    const status={healthy:['🌱',T('Healthy','সুস্থ'),'badge-green'],disease:['🦠',T('Disease','রোগ'),'badge-red'],
+      pest:['🐛',T('Pest','পোকার আক্রমণ'),'badge-red'],nutrient_deficiency:['🧪',T('Nutrient problem','পুষ্টির সমস্যা'),'badge-yellow'],
+      environmental_stress:['🌡️',T('Environmental stress','পরিবেশগত চাপ'),'badge-yellow'],unclear:['❓',T('Unclear','অস্পষ্ট'),'badge-yellow']}[d.health_status]||['❓','',''];
+    const title=d.health_status==='healthy'?T('Plant looks healthy','গাছ সুস্থ দেখাচ্ছে'):
+      (d.primary_diagnosis||T('No clear diagnosis','স্পষ্ট নির্ণয় পাওয়া যায়নি'));
+    const h=el('h2',null,status[0]+' '+title);head.appendChild(h);
+    const b=el('span','badge '+status[2],status[1]);head.appendChild(b);card.appendChild(head);
+
+    if(d.plant_identified){body.appendChild(el('p','fs-13 text-muted',T('Plant: ','গাছ: ')+d.plant_identified))}
+    if(d.health_status!=='unclear'&&d.is_plant){
+      const row=el('div');row.style.cssText='display:flex;justify-content:space-between;margin:6px 0';
+      row.append(el('span','fs-13 text-muted',T('AI confidence','AI-এর নিশ্চয়তা')),el('span','fs-13 fw-600',d.confidence+'%'));
+      const track=el('div');track.style.cssText='background:var(--border);border-radius:8px;height:10px;overflow:hidden;margin-bottom:14px';
+      const bar=el('div');bar.style.cssText='height:100%;border-radius:8px;background:'+(d.confidence>=75?'#2e7d32':d.confidence>=50?'#f9a825':'#c62828')+';width:'+d.confidence+'%';
+      track.appendChild(bar);body.append(row,track);
+      if(d.severity&&d.severity!=='None'){
+        const sv={Low:T('Low','কম'),Medium:T('Medium','মাঝারি'),High:T('High','উচ্চ')}[d.severity];
+        body.appendChild(el('p','fs-13',T('Severity: ','তীব্রতা: ')+sv));
+      }
+    }
+    if(d.summary){const p=el('p','fs-13',d.summary);p.style.cssText='line-height:1.65;margin:8px 0';body.appendChild(p)}
+    if(d.image_quality==='poor'||d.health_status==='unclear'||!d.is_plant){
+      const w=section(T('📷 Retake the photo','📷 আবার ছবি তুলুন'),
+        d.retake_tips.length?d.retake_tips:[T('Take a closer, sharper photo in daylight.','দিনের আলোয় আরও কাছ থেকে স্পষ্ট ছবি তুলুন।')],'pr-warn');body.appendChild(w)}
+    [section(T('👁️ What the AI can see','👁️ ছবিতে যা দেখা যাচ্ছে'),d.visible_evidence),
+     section(T('⚡ Do this first (24–48 hours)','⚡ প্রথমে যা করবেন (২৪–৪৮ ঘণ্টা)'),d.treatment.immediate_steps,'pr-ok'),
+     section(T('🌿 Organic / low-cost options','🌿 জৈব / কম খরচের উপায়'),d.treatment.organic_options,'pr-ok'),
+     section(T('🧴 Chemical options (follow the label)','🧴 রাসায়নিক উপায় (লেবেল মেনে ব্যবহার করুন)'),d.treatment.chemical_options,'pr-info'),
+     section(T('🛡️ Prevention','🛡️ প্রতিরোধ'),d.prevention,'pr-info')].forEach(x=>x&&body.appendChild(x));
+    if(d.other_possibilities.length){
+      body.appendChild(section(T('🤔 Other possibilities','🤔 অন্যান্য সম্ভাবনা'),d.other_possibilities.map(o=>o.name+' (~'+o.confidence+'%)')));
+    }
+    if(d.needs_expert){
+      body.appendChild(section(T('👨‍🌾 Please confirm with an expert','👨‍🌾 বিশেষজ্ঞের সাথে নিশ্চিত হোন'),
+        [T('Show this to your local Sub-Assistant Agriculture Officer (DAE) or call the Krishi Call Center: 16123.','আপনার এলাকার উপসহকারী কৃষি কর্মকর্তা (DAE)-কে দেখান অথবা কৃষি কল সেন্টারে ফোন করুন: ১৬১২৩।')],'pr-warn'));
+    }
+    const note=el('p','fs-12 text-muted',T('AI-generated from a single photo — it can be wrong, as many plant problems look alike. Use it as guidance, not a final verdict. Always follow pesticide label instructions.','একটি ছবি থেকে AI-এর তৈরি — ভুল হতে পারে, কারণ অনেক গাছের সমস্যা দেখতে একই রকম। এটিকে পরামর্শ হিসেবে নিন, চূড়ান্ত সিদ্ধান্ত নয়। কীটনাশকের লেবেলের নির্দেশনা সবসময় মেনে চলুন।'));
+    note.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--border)';body.appendChild(note);
+    card.appendChild(body);box.appendChild(card);
+    box.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  $('analyzePhotoBtn').onclick=async function(){
+    if(!photoBlob)return;
+    const btn=this;btn.disabled=true;
+    $('emptyState').style.display='none';$('resultCard').style.display='none';$('photoResult').style.display='none';
+    $('loadingState').style.display='block';
+    $('loadingState').querySelector('h3').textContent=T('Analyzing your photo…','আপনার ছবি বিশ্লেষণ করা হচ্ছে…');
+    const fd=new FormData();fd.append('image',photoBlob,'plant.jpg');
+    fd.append('crop_type',$('cropType').value);fd.append('notes',($('symptoms').value+' '+$('additionalInfo').value).trim());
+    try{
+      const res=await fetch('/api/disease-image',{method:'POST',body:fd});
+      const data=await res.json().catch(()=>({error:T('Unexpected server reply.','সার্ভার থেকে অপ্রত্যাশিত উত্তর এসেছে।')}));
+      $('loadingState').style.display='none';
+      if(!res.ok){
+        $('emptyState').style.display='block';
+        alert(data.not_configured?T('Photo analysis is not switched on yet. The site owner needs to add an AI key.','ছবি বিশ্লেষণ এখনও চালু হয়নি। সাইটের মালিককে একটি AI কী যোগ করতে হবে।'):(data.error||T('Analysis failed.','বিশ্লেষণ ব্যর্থ হয়েছে।')));
+      } else render(data);
+    }catch(e){
+      $('loadingState').style.display='none';$('emptyState').style.display='block';
+      alert(T('Could not reach the server. If it was asleep, wait a few seconds and try again.','সার্ভারে যোগাযোগ করা যায়নি। সার্ভার ঘুমিয়ে থাকলে কয়েক সেকেন্ড পর আবার চেষ্টা করুন।'));
+    }
+    btn.disabled=false;
+  };
+})();
 </script>
 {% endblock %}

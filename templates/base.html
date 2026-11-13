@@ -637,10 +637,52 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closePhotoMo
 <script>
 // PWA
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/static/sw.js")
+  navigator.serviceWorker.register("/sw.js", {scope: "/"})
     .then(() => console.log("GreenField SW registered ✅"))
     .catch(e => console.log("SW error:", e));
 }
+try { localStorage.setItem("gf_lang", "{{ 'bn' if is_bn else 'en' }}"); } catch (e) {}
+
+// Connection / slow-server banner (works with the service worker)
+(function () {
+  const BN = {{ 'true' if is_bn else 'false' }};
+  let bar = null;
+  function show(msg, action) {
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:9999;' +
+        'background:#1b5e20;color:#fff;border-radius:12px;padding:11px 14px;font-size:13.5px;display:flex;gap:10px;' +
+        'align-items:center;justify-content:space-between;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:560px;margin:0 auto';
+      document.body.appendChild(bar);
+    }
+    bar.innerHTML = '';
+    const sp = document.createElement('span'); sp.textContent = msg; bar.appendChild(sp);
+    if (action) {
+      const b = document.createElement('button');
+      b.textContent = action.label;
+      b.style.cssText = 'background:#fff;color:#1b5e20;border:0;border-radius:8px;padding:6px 12px;font-weight:600;cursor:pointer';
+      b.onclick = action.fn; bar.appendChild(b);
+    }
+  }
+  function hide() { if (bar) { bar.remove(); bar = null; } }
+  if ('BroadcastChannel' in window) {
+    const ch = new BroadcastChannel('gf-sw');
+    ch.onmessage = ev => {
+      const d = ev.data || {};
+      if (d.path !== location.pathname) return;
+      if (d.type === 'stale') show(BN ? '⏳ সার্ভার চালু হচ্ছে — সর্বশেষ সংরক্ষিত তথ্য দেখানো হচ্ছে…' : '⏳ Server is waking up — showing your last saved view…');
+      if (d.type === 'offline') show(BN ? '📴 অফলাইন — সংরক্ষিত পেজ দেখানো হচ্ছে' : '📴 Offline — showing the saved page');
+      if (d.type === 'fresh') show(BN ? '✅ নতুন তথ্য প্রস্তুত' : '✅ Fresh data is ready',
+        { label: BN ? 'রিফ্রেশ' : 'Refresh', fn: () => location.reload() });
+    };
+  }
+  window.addEventListener('offline', () => show(BN ? '📴 আপনি অফলাইনে আছেন' : '📴 You are offline'));
+  window.addEventListener('online', () => { show(BN ? '✅ আবার অনলাইনে' : '✅ Back online'); setTimeout(hide, 2500); });
+  // Keep the free server warm while the app is open / brought back to the foreground.
+  const warm = () => { if (navigator.onLine) fetch('/healthz', { cache: 'no-store' }).catch(() => {}); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') warm(); });
+})();
+
 let deferredInstallPrompt = null;
 const installBtn = document.getElementById('installAppBtn');
 window.addEventListener('beforeinstallprompt', e => {

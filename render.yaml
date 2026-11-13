@@ -9,7 +9,7 @@ services:
     name: greenfield-smart-farming
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --preload
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
@@ -19,12 +19,15 @@ services:
         value: production
       - key: OPENWEATHER_KEY
         value: ""
+      # Photo disease analysis (free key: https://aistudio.google.com/apikey)
+      - key: GEMINI_API_KEY
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: greenfield-postgres
           property: connectionString
       - key: APP_BASE_URL
-        value: "https://greenfield-smart-farming.onrender.com"
+        value: "https://greenfield-smart-farming-1.onrender.com"
       # Optional — for real password-reset emails via Gmail SMTP.
       # Leave blank to have reset links printed to the server log instead.
       - key: MAIL_SERVER

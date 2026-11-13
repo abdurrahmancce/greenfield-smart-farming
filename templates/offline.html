@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#2e7d32"/>
+<title>You're offline — GreenField</title>
+<style>
+  :root{color-scheme:light dark;--bg:#f1f8f1;--card:#fff;--tx:#1b3a1e;--mut:#5f7a62;--ac:#2e7d32}
+  @media(prefers-color-scheme:dark){:root{--bg:#121a12;--card:#1c261c;--tx:#e6f2e6;--mut:#9db79f;--ac:#66bb6a}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+       background:var(--bg);color:var(--tx);font-family:system-ui,'Hind Siliguri',sans-serif}
+  .box{max-width:420px;width:100%;background:var(--card);border-radius:20px;padding:32px 24px;text-align:center;
+       box-shadow:0 8px 30px rgba(0,0,0,.08)}
+  .ic{font-size:56px;margin-bottom:8px}
+  h1{font-size:22px;margin:8px 0}
+  p{color:var(--mut);line-height:1.6;margin:8px 0}
+  .btn{display:inline-block;margin-top:18px;padding:12px 26px;border:0;border-radius:12px;background:var(--ac);
+       color:#fff;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none}
+  .btn.alt{background:transparent;color:var(--ac);border:1.5px solid var(--ac);margin-left:6px}
+  small{display:block;margin-top:18px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="ic">🌱</div>
+  <h1 id="t">You're offline</h1>
+  <p id="m">GreenField couldn't reach the internet. Pages you opened earlier are still available, and your saved data is safe on the server.</p>
+  <button class="btn" onclick="location.reload()" id="r">Try again</button>
+  <a class="btn alt" href="/dashboard" id="d">Open Dashboard</a>
+  <small id="s">We'll reconnect automatically as soon as you're back online.</small>
+</div>
+<script>
+  // Offline page is static, so translate it from the saved language preference.
+  try{
+    if((document.cookie.match(/gf_lang=(bn)/)||localStorage.getItem('gf_lang')==='bn')){
+      t.textContent='আপনি অফলাইনে আছেন';
+      m.textContent='গ্রিনফিল্ড ইন্টারনেটের সাথে যুক্ত হতে পারেনি। আগে খোলা পেজগুলো এখনও দেখা যাবে এবং আপনার সংরক্ষিত তথ্য সার্ভারে নিরাপদ আছে।';
+      r.textContent='আবার চেষ্টা করুন'; d.textContent='ড্যাশবোর্ড খুলুন';
+      s.textContent='ইন্টারনেট ফিরলেই আমরা নিজে থেকে যুক্ত হব।';
+    }
+  }catch(e){}
+  window.addEventListener('online',()=>location.reload());
+</script>
+</body>
+</html>
