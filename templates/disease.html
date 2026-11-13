@@ -82,6 +82,11 @@
   </div>
   <div id="resultsPanel">
     <div id="photoResult" style="display:none"></div>
+    <div class="card" id="pendingCard" style="display:none;margin-bottom:16px">
+      <div class="card-header"><h2><i class="fas fa-clock"></i> Photos waiting for internet</h2><span class="badge badge-yellow" id="pendingCount"></span></div>
+      <div class="card-body"><div id="pendingList"></div>
+        <p class="text-muted fs-12" style="margin-top:10px">These photos are saved on this device and will be analysed automatically when you are back online.</p></div>
+    </div>
     <div class="card" id="emptyState">
       <div class="card-body" style="text-align:center;padding:60px 24px">
         <div style="font-size:64px;margin-bottom:16px">🌿</div>
@@ -136,6 +141,10 @@
         </div>
       </div>
     </div>
+    <div class="card" id="historyCard" style="margin-top:16px;display:none">
+      <div class="card-header"><h2><i class="fas fa-history"></i> Previous Diagnoses</h2></div>
+      <div class="card-body" style="padding:8px 14px"><div id="historyList"></div></div>
+    </div>
   </div>
 </div>
 <style>
@@ -150,6 +159,18 @@
 .pr-warn{background:rgba(245,127,23,.12);border-color:rgba(245,127,23,.4)}
 .pr-ok{background:rgba(46,125,50,.1);border-color:rgba(46,125,50,.3)}
 .pr-info{background:rgba(21,101,192,.09);border-color:rgba(21,101,192,.3)}
+.hist-item{display:flex;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);cursor:pointer}
+.hist-item:last-child{border-bottom:0}
+.hist-item:hover{background:var(--bg-secondary)}
+.hist-thumb{width:52px;height:52px;border-radius:10px;object-fit:cover;background:var(--bg-secondary);flex:none;display:flex;align-items:center;justify-content:center;font-size:22px}
+.hist-main{flex:1;min-width:0}
+.hist-title{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary)}
+.hist-sub{font-size:12px;color:var(--text-secondary)}
+.hist-del{border:0;background:transparent;color:var(--text-secondary);cursor:pointer;padding:8px;border-radius:8px}
+.hist-del:hover{color:#c62828;background:rgba(198,40,40,.1)}
+.act-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.act-row .btn{flex:1;min-width:150px;justify-content:center}
+.act-row select{width:100%;margin-bottom:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:768px){div[style*="grid-template-columns:1fr 1.4fr"]{grid-template-columns:1fr!important}}
 </style>
@@ -195,23 +216,28 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
   const BN=document.documentElement.lang==='bn';
   const T=(en,bn)=>BN?bn:en;
   const $=id=>document.getElementById(id);
-  let photoBlob=null;
+  const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
+  let photoBlob=null,photoThumb='';
   const cam=$('photoCamera'),file=$('photoFile');
   $('btnCamera').onclick=()=>cam.click();
   $('btnUpload').onclick=()=>file.click();
   $('photoClear').onclick=clearPhoto;
   cam.onchange=()=>pick(cam.files[0]);file.onchange=()=>pick(file.files[0]);
 
-  function clearPhoto(){photoBlob=null;cam.value='';file.value='';$('photoPreviewWrap').style.display='none';$('photoResult').style.display='none';}
-  // Shrink big phone photos in the browser (faster upload, same diagnosis quality)
+  function clearPhoto(){photoBlob=null;photoThumb='';cam.value='';file.value='';$('photoPreviewWrap').style.display='none';$('photoResult').style.display='none';}
+  function shrink(img,max,q,cb){
+    const r=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');
+    c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;
+  }
+  // Shrink big phone photos in the browser (faster upload, same diagnosis quality) + a tiny thumbnail for history
   function pick(f){
     if(!f)return;
     if(!/^image\//.test(f.type)){alert(T('Please choose an image file.','অনুগ্রহ করে একটি ছবি বেছে নিন।'));return}
     const img=new Image(),url=URL.createObjectURL(f);
     img.onload=()=>{
-      const max=1280,r=Math.min(1,max/Math.max(img.width,img.height));
-      const c=document.createElement('canvas');c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
-      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      const c=shrink(img,1280);
+      photoThumb=shrink(img,200).toDataURL('image/jpeg',0.6);
       c.toBlob(b=>{photoBlob=b;$('photoPreview').src=URL.createObjectURL(b);$('photoPreviewWrap').style.display='block';
         $('photoResult').style.display='none';},'image/jpeg',0.85);
       URL.revokeObjectURL(url);
@@ -220,24 +246,53 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     img.src=url;
   }
 
-  const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
   function section(title,items,cls){
     if(!items||!items.length)return null;
     const d=el('div','pr-sec '+(cls||'')),h=el('h4',null,title),ul=el('ul');
     items.forEach(i=>ul.appendChild(el('li',null,i)));d.append(h,ul);return d;
   }
+  const fmtDate=s=>{try{const d=new Date((s||'').slice(0,10)+'T00:00:00');return d.toLocaleDateString(BN?'bn-BD':'en-GB',{day:'numeric',month:'short',year:'numeric'})}catch(e){return (s||'').slice(0,10)}};
+
+  /* ---- save-to-farm actions ---- */
+  function farmOptions(){
+    const src=$('farmLink');if(!src)return null;
+    const sel=document.createElement('select');sel.className='form-control';
+    sel.appendChild(new Option(T('— Choose farm —','— খামার বেছে নিন —'),''));
+    for(const o of src.options){if(o.value)sel.appendChild(new Option(o.text,o.value))}
+    return sel;
+  }
+  function actions(d){
+    if(!d.scan_id)return null;
+    const wrap=el('div','pr-sec pr-info');wrap.appendChild(el('h4',null,T('💾 Save this diagnosis','💾 এই নির্ণয় সংরক্ষণ করুন')));
+    const sel=farmOptions();
+    if(!sel){wrap.appendChild(el('p','fs-12 text-muted',T('Add a farm first to save diagnoses to it.','খামারে সংরক্ষণ করতে আগে একটি খামার যোগ করুন।')));return wrap}
+    sel.value=d.farm_id?String(d.farm_id):($('farmLink')&&$('farmLink').value)||'';
+    const row=el('div','act-row');
+    const post=async(kind,btn)=>{
+      if(!sel.value){alert(T('Please choose a farm first.','আগে একটি খামার বেছে নিন।'));return}
+      btn.disabled=true;
+      try{
+        const r=await fetch('/api/disease-history/'+d.scan_id+'/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({farm_id:sel.value})});
+        const j=await r.json();
+        if(r.ok){btn.textContent='✓ '+T('Saved','সংরক্ষিত');loadHistory()}else{alert(j.error||T('Could not save.','সংরক্ষণ করা যায়নি।'));btn.disabled=false}
+      }catch(e){alert(T('Could not reach the server.','সার্ভারে যোগাযোগ করা যায়নি।'));btn.disabled=false}
+    };
+    const b1=el('button','btn btn-outline',T('📝 Add to Farm Notes','📝 খামার নোটে যোগ করুন'));b1.type='button';b1.onclick=()=>post('to-note',b1);
+    const b2=el('button','btn btn-outline',T('🌱 Add to Growth Tracker','🌱 ফসল ট্র্যাকারে যোগ করুন'));b2.type='button';b2.onclick=()=>post('to-growth',b2);
+    row.append(b1,b2);wrap.append(sel,row);return wrap;
+  }
 
   function render(d){
     const box=$('photoResult');box.innerHTML='';box.style.display='block';
-    $('emptyState').style.display='none';$('resultCard').style.display='none';
+    $('emptyState').style.display='none';$('resultCard').style.display='none';$('loadingState').style.display='none';
     const card=el('div','card'),head=el('div','card-header'),body=el('div','card-body');
     const status={healthy:['🌱',T('Healthy','সুস্থ'),'badge-green'],disease:['🦠',T('Disease','রোগ'),'badge-red'],
       pest:['🐛',T('Pest','পোকার আক্রমণ'),'badge-red'],nutrient_deficiency:['🧪',T('Nutrient problem','পুষ্টির সমস্যা'),'badge-yellow'],
       environmental_stress:['🌡️',T('Environmental stress','পরিবেশগত চাপ'),'badge-yellow'],unclear:['❓',T('Unclear','অস্পষ্ট'),'badge-yellow']}[d.health_status]||['❓','',''];
     const title=d.health_status==='healthy'?T('Plant looks healthy','গাছ সুস্থ দেখাচ্ছে'):
       (d.primary_diagnosis||T('No clear diagnosis','স্পষ্ট নির্ণয় পাওয়া যায়নি'));
-    const h=el('h2',null,status[0]+' '+title);head.appendChild(h);
-    const b=el('span','badge '+status[2],status[1]);head.appendChild(b);card.appendChild(head);
+    head.appendChild(el('h2',null,status[0]+' '+title));
+    head.appendChild(el('span','badge '+status[2],status[1]));card.appendChild(head);
 
     if(d.plant_identified){body.appendChild(el('p','fs-13 text-muted',T('Plant: ','গাছ: ')+d.plant_identified))}
     if(d.health_status!=='unclear'&&d.is_plant){
@@ -253,48 +308,139 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     }
     if(d.summary){const p=el('p','fs-13',d.summary);p.style.cssText='line-height:1.65;margin:8px 0';body.appendChild(p)}
     if(d.image_quality==='poor'||d.health_status==='unclear'||!d.is_plant){
-      const w=section(T('📷 Retake the photo','📷 আবার ছবি তুলুন'),
-        d.retake_tips.length?d.retake_tips:[T('Take a closer, sharper photo in daylight.','দিনের আলোয় আরও কাছ থেকে স্পষ্ট ছবি তুলুন।')],'pr-warn');body.appendChild(w)}
+      body.appendChild(section(T('📷 Retake the photo','📷 আবার ছবি তুলুন'),
+        (d.retake_tips&&d.retake_tips.length)?d.retake_tips:[T('Take a closer, sharper photo in daylight.','দিনের আলোয় আরও কাছ থেকে স্পষ্ট ছবি তুলুন।')],'pr-warn'))}
     [section(T('👁️ What the AI can see','👁️ ছবিতে যা দেখা যাচ্ছে'),d.visible_evidence),
      section(T('⚡ Do this first (24–48 hours)','⚡ প্রথমে যা করবেন (২৪–৪৮ ঘণ্টা)'),d.treatment.immediate_steps,'pr-ok'),
      section(T('🌿 Organic / low-cost options','🌿 জৈব / কম খরচের উপায়'),d.treatment.organic_options,'pr-ok'),
      section(T('🧴 Chemical options (follow the label)','🧴 রাসায়নিক উপায় (লেবেল মেনে ব্যবহার করুন)'),d.treatment.chemical_options,'pr-info'),
      section(T('🛡️ Prevention','🛡️ প্রতিরোধ'),d.prevention,'pr-info')].forEach(x=>x&&body.appendChild(x));
-    if(d.other_possibilities.length){
+    if(d.other_possibilities&&d.other_possibilities.length){
       body.appendChild(section(T('🤔 Other possibilities','🤔 অন্যান্য সম্ভাবনা'),d.other_possibilities.map(o=>o.name+' (~'+o.confidence+'%)')));
     }
     if(d.needs_expert){
       body.appendChild(section(T('👨‍🌾 Please confirm with an expert','👨‍🌾 বিশেষজ্ঞের সাথে নিশ্চিত হোন'),
         [T('Show this to your local Sub-Assistant Agriculture Officer (DAE) or call the Krishi Call Center: 16123.','আপনার এলাকার উপসহকারী কৃষি কর্মকর্তা (DAE)-কে দেখান অথবা কৃষি কল সেন্টারে ফোন করুন: ১৬১২৩।')],'pr-warn'));
     }
+    const act=actions(d);if(act)body.appendChild(act);
     const note=el('p','fs-12 text-muted',T('AI-generated from a single photo — it can be wrong, as many plant problems look alike. Use it as guidance, not a final verdict. Always follow pesticide label instructions.','একটি ছবি থেকে AI-এর তৈরি — ভুল হতে পারে, কারণ অনেক গাছের সমস্যা দেখতে একই রকম। এটিকে পরামর্শ হিসেবে নিন, চূড়ান্ত সিদ্ধান্ত নয়। কীটনাশকের লেবেলের নির্দেশনা সবসময় মেনে চলুন।'));
     note.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--border)';body.appendChild(note);
     card.appendChild(body);box.appendChild(card);
     box.scrollIntoView({behavior:'smooth',block:'start'});
   }
 
+  /* ---- history ---- */
+  const STATUS_ICON={healthy:'🌱',disease:'🦠',pest:'🐛',nutrient_deficiency:'🧪',environmental_stress:'🌡️',unclear:'❓'};
+  async function loadHistory(){
+    try{
+      const r=await fetch('/api/disease-history');if(!r.ok)return;
+      const list=await r.json(),box=$('historyList');box.innerHTML='';
+      $('historyCard').style.display=list.length?'block':'none';
+      list.forEach(h=>{
+        const row=el('div','hist-item');
+        let th;
+        if(h.thumb){th=el('img','hist-thumb');th.src=h.thumb;th.alt=''}else{th=el('div','hist-thumb',STATUS_ICON[h.health_status]||'🌿')}
+        const main=el('div','hist-main');
+        const name=h.diagnosis||(h.health_status==='healthy'?T('Healthy plant','সুস্থ গাছ'):T('No clear diagnosis','স্পষ্ট নির্ণয় নেই'));
+        main.appendChild(el('div','hist-title',STATUS_ICON[h.health_status]+' '+name));
+        main.appendChild(el('div','hist-sub',[fmtDate(h.created_at),h.confidence?h.confidence+'%':'',h.farm_name||''].filter(Boolean).join(' · ')));
+        const del=el('button','hist-del');del.type='button';del.setAttribute('aria-label',T('Delete','মুছুন'));del.innerHTML='<i class="fas fa-trash"></i>';
+        del.onclick=async e=>{e.stopPropagation();if(!confirm(T('Delete this diagnosis?','এই নির্ণয়টি মুছে ফেলবেন?')))return;
+          await fetch('/api/disease-history/'+h.id+'/delete',{method:'POST'});loadHistory()};
+        row.onclick=async()=>{const r2=await fetch('/api/disease-history/'+h.id);if(r2.ok)render(await r2.json())};
+        row.append(th,main,del);box.appendChild(row);
+      });
+    }catch(e){}
+  }
+
+  /* ---- offline queue (IndexedDB) ---- */
+  const DB='gf-disease',STORE='queue';
+  const idb=()=>new Promise((res,rej)=>{const q=indexedDB.open(DB,1);q.onupgradeneeded=()=>q.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)});
+  const tx=async(mode,fn)=>{const db=await idb();return new Promise((res,rej)=>{const t=db.transaction(STORE,mode),s=t.objectStore(STORE);const r=fn(s);t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error)})};
+  const qAdd=item=>tx('readwrite',s=>s.add(item));
+  const qAll=()=>tx('readonly',s=>s.getAll());
+  const qDel=id=>tx('readwrite',s=>s.delete(id));
+  let processing=false;
+
+  async function renderPending(){
+    try{
+      const items=await qAll(),card=$('pendingCard'),box=$('pendingList');
+      box.innerHTML='';card.style.display=items.length?'block':'none';$('pendingCount').textContent=items.length;
+      items.forEach(it=>{
+        const row=el('div','hist-item');row.style.cursor='default';
+        const th=el('img','hist-thumb');th.src=it.thumb||'';th.alt='';
+        const main=el('div','hist-main');
+        main.appendChild(el('div','hist-title','⏳ '+(it.crop||T('Plant photo','গাছের ছবি'))));
+        main.appendChild(el('div','hist-sub',T('Saved on this device · waiting for internet','এই ডিভাইসে সংরক্ষিত · ইন্টারনেটের অপেক্ষায়')));
+        const go=el('button','btn btn-outline',T('Analyze now','এখনই বিশ্লেষণ'));go.type='button';go.style.padding='6px 10px';
+        go.onclick=()=>processQueue(true);
+        const del=el('button','hist-del');del.type='button';del.innerHTML='<i class="fas fa-trash"></i>';
+        del.onclick=async()=>{await qDel(it.id);renderPending()};
+        row.append(th,main,go,del);box.appendChild(row);
+      });
+    }catch(e){}
+  }
+
+  async function sendOne(blob,crop,notes,farm,thumb){
+    const fd=new FormData();fd.append('image',blob,'plant.jpg');fd.append('crop_type',crop||'');fd.append('notes',notes||'');
+    fd.append('farm_id',farm||'');fd.append('thumb',thumb||'');
+    const res=await fetch('/api/disease-image',{method:'POST',body:fd});
+    const data=await res.json().catch(()=>({error:(res.status===502||res.status===503||res.status===504)?T('The server is busy or waking up (code '+res.status+'). Wait 30 seconds and try again.','সার্ভার ব্যস্ত বা জেগে উঠছে (কোড '+res.status+')। ৩০ সেকেন্ড পর আবার চেষ্টা করুন।'):T('Unexpected server reply (code '+res.status+').','সার্ভার থেকে অপ্রত্যাশিত উত্তর (কোড '+res.status+')।')}));
+    return {ok:res.ok,data,status:res.status};
+  }
+
+  async function processQueue(manual){
+    if(processing||!navigator.onLine)return;
+    let items;try{items=await qAll()}catch(e){return}
+    if(!items.length)return;
+    processing=true;let done=0,last=null;
+    for(const it of items){
+      try{
+        const r=await sendOne(it.blob,it.crop,it.notes,it.farm,it.thumb);
+        if(r.ok){await qDel(it.id);done++;last=r.data}
+        else if(r.status>=400&&r.status<500&&r.status!==429){await qDel(it.id)}   // unusable photo: drop it
+        else break;                                                              // server busy: retry later
+      }catch(e){break}
+    }
+    processing=false;await renderPending();await loadHistory();
+    if(last){render(last)}
+    if(done&&!last){}
+    if(done)alert(T(done+' saved photo(s) analysed. See Previous Diagnoses.',done+'টি সংরক্ষিত ছবি বিশ্লেষণ হয়েছে। "আগের নির্ণয়" দেখুন।'));
+  }
+  window.addEventListener('online',()=>setTimeout(()=>processQueue(),1500));
+
+  /* ---- analyze button ---- */
   $('analyzePhotoBtn').onclick=async function(){
     if(!photoBlob)return;
     const btn=this;btn.disabled=true;
+    const crop=$('cropType').value,notes=($('symptoms').value+' '+$('additionalInfo').value).trim(),farm=$('farmLink')?$('farmLink').value:'';
+    const queueIt=async()=>{
+      try{await qAdd({blob:photoBlob,crop,notes,farm,thumb:photoThumb,created:Date.now()});
+        $('loadingState').style.display='none';$('emptyState').style.display='block';
+        await renderPending();clearPhoto();
+        alert(T('You are offline. The photo is saved on this device and will be analysed automatically when the internet returns.','আপনি অফলাইনে আছেন। ছবিটি এই ডিভাইসে সংরক্ষিত হয়েছে, ইন্টারনেট ফিরলে নিজে থেকেই বিশ্লেষণ হবে।'));
+      }catch(e){alert(T('Could not save the photo offline.','ছবিটি অফলাইনে সংরক্ষণ করা যায়নি।'))}
+    };
+    if(!navigator.onLine){await queueIt();btn.disabled=false;return}
     $('emptyState').style.display='none';$('resultCard').style.display='none';$('photoResult').style.display='none';
     $('loadingState').style.display='block';
     $('loadingState').querySelector('h3').textContent=T('Analyzing your photo…','আপনার ছবি বিশ্লেষণ করা হচ্ছে…');
-    const fd=new FormData();fd.append('image',photoBlob,'plant.jpg');
-    fd.append('crop_type',$('cropType').value);fd.append('notes',($('symptoms').value+' '+$('additionalInfo').value).trim());
     try{
-      const res=await fetch('/api/disease-image',{method:'POST',body:fd});
-      const data=await res.json().catch(()=>({error:(res.status===502||res.status===503||res.status===504)?T('The server is busy or waking up (code '+res.status+'). Wait 30 seconds and try again.','সার্ভার ব্যস্ত বা জেগে উঠছে (কোড '+res.status+')। ৩০ সেকেন্ড পর আবার চেষ্টা করুন।'):T('Unexpected server reply (code '+res.status+').','সার্ভার থেকে অপ্রত্যাশিত উত্তর (কোড '+res.status+')।')}));
+      const r=await sendOne(photoBlob,crop,notes,farm,photoThumb);
       $('loadingState').style.display='none';
-      if(!res.ok){
+      if(!r.ok){
         $('emptyState').style.display='block';
-        alert(data.not_configured?T('Photo analysis is not switched on yet. The site owner needs to add an AI key.','ছবি বিশ্লেষণ এখনও চালু হয়নি। সাইটের মালিককে একটি AI কী যোগ করতে হবে।'):(data.error||T('Analysis failed.','বিশ্লেষণ ব্যর্থ হয়েছে।')));
-      } else render(data);
+        alert(r.data.not_configured?T('Photo analysis is not switched on yet. The site owner needs to add an AI key.','ছবি বিশ্লেষণ এখনও চালু হয়নি। সাইটের মালিককে একটি AI কী যোগ করতে হবে।'):(r.data.error||T('Analysis failed.','বিশ্লেষণ ব্যর্থ হয়েছে।')));
+      } else {render(r.data);loadHistory()}
     }catch(e){
-      $('loadingState').style.display='none';$('emptyState').style.display='block';
-      alert(T('Could not reach the server. If it was asleep, wait a few seconds and try again.','সার্ভারে যোগাযোগ করা যায়নি। সার্ভার ঘুমিয়ে থাকলে কয়েক সেকেন্ড পর আবার চেষ্টা করুন।'));
+      if(!navigator.onLine){await queueIt()}
+      else{$('loadingState').style.display='none';$('emptyState').style.display='block';
+        alert(T('Could not reach the server. If it was asleep, wait a few seconds and try again.','সার্ভারে যোগাযোগ করা যায়নি। সার্ভার ঘুমিয়ে থাকলে কয়েক সেকেন্ড পর আবার চেষ্টা করুন।'))}
     }
     btn.disabled=false;
   };
+
+  loadHistory();renderPending().then(()=>processQueue());
 })();
 </script>
 {% endblock %}

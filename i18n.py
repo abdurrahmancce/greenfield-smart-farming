@@ -135,6 +135,9 @@ BN = {
     "Hilly regions": "পার্বত্য অঞ্চল",
 
     # ── Photo diagnosis ──────────────────────────────────────────────
+    "Photos waiting for internet": "ইন্টারনেটের অপেক্ষায় থাকা ছবি",
+    "These photos are saved on this device and will be analysed automatically when you are back online.": "এই ছবিগুলো আপনার ডিভাইসে সংরক্ষিত আছে এবং ইন্টারনেট ফিরলে নিজে থেকেই বিশ্লেষণ হবে।",
+    "Previous Diagnoses": "আগের নির্ণয়",
     "Photo Diagnosis": "ছবি দিয়ে রোগ নির্ণয়",
     "AI Vision": "এআই ভিশন",
     "Take or upload a clear photo of the affected leaf, stem, fruit or whole plant. Optional — you can also use the symptom checker below.": "আক্রান্ত পাতা, কাণ্ড, ফল বা পুরো গাছের একটি স্পষ্ট ছবি তুলুন বা আপলোড করুন। এটি ঐচ্ছিক — নিচের লক্ষণ যাচাইও ব্যবহার করতে পারেন।",

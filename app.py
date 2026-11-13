@@ -325,6 +325,20 @@ def init_db():
             notes        TEXT    DEFAULT '',
             created_at   TEXT    DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS disease_scans (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL,
+            farm_id       INTEGER NOT NULL DEFAULT 0,
+            crop          TEXT    DEFAULT '',
+            diagnosis     TEXT    DEFAULT '',
+            health_status TEXT    DEFAULT '',
+            confidence    INTEGER DEFAULT 0,
+            severity      TEXT    DEFAULT '',
+            result_json   TEXT    NOT NULL,
+            thumb         TEXT    DEFAULT '',
+            lang          TEXT    DEFAULT 'en',
+            created_at    TEXT    DEFAULT (datetime('now'))
+        );
         CREATE TABLE IF NOT EXISTS expense_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             farm_id     INTEGER NOT NULL,
@@ -925,6 +939,7 @@ def profile():
                 flash("Type DELETE to confirm account deletion.", "error")
             else:
                 # Manually cascade — remove all data linked to this account first
+                conn.execute("DELETE FROM disease_scans WHERE user_id=?", (uid,))
                 conn.execute("DELETE FROM crop_notes WHERE user_id=?", (uid,))
                 conn.execute("DELETE FROM farms WHERE user_id=?", (uid,))
                 conn.execute("DELETE FROM fertilizer_history WHERE user_id=?", (uid,))
@@ -1417,7 +1432,7 @@ def disease_page():
     try:
         conn = get_db(); cur = conn.cursor()
         ph = "%s" if USE_POSTGRES else "?"
-        cur.execute(f"SELECT id, name, crop_type FROM farms WHERE user_id={ph} ORDER BY name", (session["user_id"],))
+        cur.execute(f"SELECT id, farm_name, crop_type FROM farms WHERE user_id={ph} ORDER BY farm_name", (session["user_id"],))
         farms = cur.fetchall(); conn.close()
     except Exception:
         pass
@@ -1942,7 +1957,156 @@ def api_disease_image():
     except Exception as e:
         print("[vision]", repr(e))
         return jsonify({"error": "Something went wrong while analysing the photo."}), 500
+    result["scan_id"] = _save_scan(uid, result, crop, request.form.get("farm_id"),
+                                   request.form.get("thumb", ""), lang)
     return jsonify(result)
+
+
+def _save_scan(uid, result, crop, farm_id, thumb, lang):
+    """Keep every successful analysis (small thumbnail only, never the full photo). Never fails the request."""
+    try:
+        conn = get_db()
+        fid = 0
+        try:
+            fid = int(farm_id or 0)
+        except ValueError:
+            fid = 0
+        if fid and not conn.execute("SELECT id FROM farms WHERE id=? AND user_id=?", (fid, uid)).fetchone():
+            fid = 0
+        if not (isinstance(thumb, str) and thumb.startswith("data:image/jpeg;base64,") and len(thumb) < 90000):
+            thumb = ""
+        row = conn.execute(
+            """INSERT INTO disease_scans (user_id,farm_id,crop,diagnosis,health_status,confidence,severity,result_json,thumb,lang)
+               VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id""",
+            (uid, fid, crop, result.get("primary_diagnosis", ""), result.get("health_status", ""),
+             int(result.get("confidence", 0)), result.get("severity", ""), json.dumps(result, ensure_ascii=False),
+             thumb, lang)).fetchone()
+        conn.commit()
+        sid = row[0] if row else None
+        conn.close()
+        return sid
+    except Exception as e:
+        print("[save_scan]", repr(e))
+        return None
+
+
+@app.route("/api/disease-history")
+@login_required
+def api_disease_history():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT d.id, d.crop, d.diagnosis, d.health_status, d.confidence, d.severity, d.thumb, d.created_at,
+                  d.farm_id, f.farm_name
+           FROM disease_scans d LEFT JOIN farms f ON f.id=d.farm_id
+           WHERE d.user_id=? ORDER BY d.id DESC LIMIT 30""", (session["user_id"],)).fetchall()
+    conn.close()
+    return jsonify([{k: r[k] for k in ("id", "crop", "diagnosis", "health_status", "confidence", "severity",
+                                       "thumb", "created_at", "farm_id", "farm_name")} for r in rows])
+
+
+def _own_scan(conn, sid):
+    return conn.execute("SELECT * FROM disease_scans WHERE id=? AND user_id=?", (sid, session["user_id"])).fetchone()
+
+
+@app.route("/api/disease-history/<int:sid>")
+@login_required
+def api_disease_scan(sid):
+    conn = get_db(); r = _own_scan(conn, sid); conn.close()
+    if not r:
+        return jsonify({"error": "Not found"}), 404
+    data = json.loads(r["result_json"])
+    data.update({"scan_id": r["id"], "farm_id": r["farm_id"], "created_at": r["created_at"], "crop": r["crop"]})
+    return jsonify(data)
+
+
+@app.route("/api/disease-history/<int:sid>/delete", methods=["POST"])
+@login_required
+def api_disease_scan_delete(sid):
+    conn = get_db()
+    conn.execute("DELETE FROM disease_scans WHERE id=? AND user_id=?", (sid, session["user_id"]))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
+
+
+def _scan_text(r, data):
+    """Plain-text summary of a scan, in the language it was analysed in."""
+    bn = r["lang"] == "bn"
+    L = (lambda en, bn_: bn_ if bn else en)
+    t = data.get("treatment", {})
+    lines = []
+    if data.get("summary"):
+        lines.append(data["summary"])
+    lines.append(L("AI confidence: ", "AI-এর নিশ্চয়তা: ") + f"{data.get('confidence', 0)}%"
+                 + (L(" · Severity: ", " · তীব্রতা: ") + data["severity"] if data.get("severity") not in (None, "", "None") else ""))
+    for label, key in ((L("Do first", "প্রথমে করণীয়"), "immediate_steps"),
+                       (L("Organic options", "জৈব উপায়"), "organic_options"),
+                       (L("Chemical options", "রাসায়নিক উপায়"), "chemical_options")):
+        items = t.get(key) or []
+        if items:
+            lines.append(label + ": " + "; ".join(items))
+    if data.get("prevention"):
+        lines.append(L("Prevention", "প্রতিরোধ") + ": " + "; ".join(data["prevention"]))
+    lines.append(L("(From AI photo diagnosis, ", "(AI ছবি-নির্ণয় থেকে, ") + (r["created_at"] or "")[:10] + ")")
+    return "\n".join(lines)
+
+
+def _scan_title(r):
+    bn = r["lang"] == "bn"
+    name = r["diagnosis"] or ("সুস্থ গাছ" if bn else "Healthy plant" if r["health_status"] == "healthy" else "Plant check")
+    if r["health_status"] == "healthy" and not r["diagnosis"]:
+        name = "সুস্থ গাছ" if bn else "Healthy plant"
+    return (("রোগ নির্ণয়: " if bn else "Diagnosis: ") + name)[:120]
+
+
+@app.route("/api/disease-history/<int:sid>/to-note", methods=["POST"])
+@login_required
+def api_scan_to_note(sid):
+    uid = session["user_id"]
+    body = request.get_json(silent=True) or {}
+    conn = get_db(); r = _own_scan(conn, sid)
+    if not r:
+        conn.close(); return jsonify({"error": "Not found"}), 404
+    try:
+        fid = int(body.get("farm_id") or r["farm_id"] or 0)
+    except ValueError:
+        fid = 0
+    if not fid or not conn.execute("SELECT id FROM farms WHERE id=? AND user_id=?", (fid, uid)).fetchone():
+        conn.close(); return jsonify({"error": "Please choose a farm first.", "need_farm": True}), 400
+    data = json.loads(r["result_json"])
+    cat = "Nutrition" if r["health_status"] == "nutrient_deficiency" else "Pest Control"
+    conn.execute("INSERT INTO crop_notes (farm_id,user_id,title,note,category) VALUES (?,?,?,?,?)",
+                 (fid, uid, _scan_title(r), _scan_text(r, data), cat))
+    conn.execute("UPDATE disease_scans SET farm_id=? WHERE id=? AND user_id=?", (fid, sid, uid))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/disease-history/<int:sid>/to-growth", methods=["POST"])
+@login_required
+def api_scan_to_growth(sid):
+    uid = session["user_id"]
+    body = request.get_json(silent=True) or {}
+    conn = get_db(); r = _own_scan(conn, sid)
+    if not r:
+        conn.close(); return jsonify({"error": "Not found"}), 404
+    try:
+        fid = int(body.get("farm_id") or r["farm_id"] or 0)
+    except ValueError:
+        fid = 0
+    if not fid or not conn.execute("SELECT id FROM farms WHERE id=? AND user_id=?", (fid, uid)).fetchone():
+        conn.close(); return jsonify({"error": "Please choose a farm first.", "need_farm": True}), 400
+    g = conn.execute("SELECT id, notes FROM crop_growth WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
+                     (fid, uid)).fetchone()
+    if not g:
+        conn.close()
+        return jsonify({"error": "This farm has no growth record yet. Add one in Growth Tracker first, or use Farm Notes.",
+                        "no_growth": True}), 400
+    line = f"[{(r['created_at'] or '')[:10]}] {_scan_title(r)} ({r['confidence']}%)"
+    new_notes = ((g["notes"] or "").rstrip() + "\n" + line).strip()[:2000]
+    conn.execute("UPDATE crop_growth SET notes=? WHERE id=? AND user_id=?", (new_notes, g["id"], uid))
+    conn.execute("UPDATE disease_scans SET farm_id=? WHERE id=? AND user_id=?", (fid, sid, uid))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
 
 
 # ── Entry ─────────────────────────────────────────────────────────
