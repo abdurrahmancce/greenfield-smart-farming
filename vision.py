@@ -18,7 +18,10 @@ import re
 
 import requests
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# Newer Google projects cannot use gemini-2.5-*; try current models in order (first one that exists wins).
+GEMINI_MODELS = [m.strip() for m in os.environ.get(
+    "GEMINI_MODEL", "gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-2.5-flash").split(",") if m.strip()]
+_good_model = None
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 TIMEOUT = 60
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
@@ -95,22 +98,35 @@ class VisionError(Exception):
 
 
 def _call_gemini(img_b64, mime, prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    global _good_model
     payload = {
         "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime, "data": img_b64}}]}],
-        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json",
-                             "thinkingConfig": {"thinkingBudget": 0}},
+        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }
-    r = requests.post(url, params={"key": os.environ["GEMINI_API_KEY"]}, json=payload, timeout=TIMEOUT)
-    if r.status_code == 429:
-        raise VisionError("The free AI quota is busy right now. Please try again in a minute.")
-    if r.status_code != 200:
-        raise VisionError(f"AI service error ({r.status_code}).")
-    try:
-        parts = r.json()["candidates"][0]["content"]["parts"]
-        return "".join(p.get("text", "") for p in parts)
-    except (KeyError, IndexError, ValueError):
-        raise VisionError("The AI could not analyse this image. Try a clearer photo.")
+    order = ([_good_model] if _good_model else []) + [m for m in GEMINI_MODELS if m != _good_model]
+    last = None
+    for model in order:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        r = requests.post(url, headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]}, json=payload, timeout=TIMEOUT)
+        if r.status_code in (404, 400):          # model not available for this key -> try the next one
+            print(f"[vision] {model} -> {r.status_code}: {r.text[:200]}")
+            last = r.status_code
+            continue
+        if r.status_code == 429:
+            raise VisionError("The free AI quota is busy right now. Please try again in a minute.")
+        if r.status_code in (401, 403):
+            print("[vision] auth error:", r.text[:200])
+            raise VisionError("The AI key was rejected. The site owner should check GEMINI_API_KEY.")
+        if r.status_code != 200:
+            print(f"[vision] {model} -> {r.status_code}: {r.text[:200]}")
+            raise VisionError(f"AI service error ({r.status_code}).")
+        try:
+            parts = r.json()["candidates"][0]["content"]["parts"]
+            _good_model = model
+            return "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        except (KeyError, IndexError, ValueError):
+            raise VisionError("The AI could not analyse this image. Try a clearer photo.")
+    raise VisionError(f"AI service error ({last or 404}): no available Gemini model for this key.")
 
 
 def _call_anthropic(img_b64, mime, prompt):
