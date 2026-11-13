@@ -1888,6 +1888,23 @@ def service_worker():
     r.headers["Service-Worker-Allowed"] = "/"
     return r
 
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "The photo is too large. Please choose a smaller one."}), 413
+
+@app.errorhandler(Exception)
+def api_errors_as_json(e):
+    """Make /api/* failures come back as JSON (never an HTML error page)."""
+    from werkzeug.exceptions import HTTPException
+    if request.path.startswith("/api/"):
+        code = e.code if isinstance(e, HTTPException) else 500
+        if not isinstance(e, HTTPException):
+            print("[api error]", repr(e))
+        return jsonify({"error": f"Server error ({code}). Please try again."}), code
+    if isinstance(e, HTTPException):
+        return e
+    raise e
+
 @app.route("/offline")
 def offline_page():
     return render_template("offline.html")

@@ -283,7 +283,7 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     fd.append('crop_type',$('cropType').value);fd.append('notes',($('symptoms').value+' '+$('additionalInfo').value).trim());
     try{
       const res=await fetch('/api/disease-image',{method:'POST',body:fd});
-      const data=await res.json().catch(()=>({error:T('Unexpected server reply.','সার্ভার থেকে অপ্রত্যাশিত উত্তর এসেছে।')}));
+      const data=await res.json().catch(()=>({error:(res.status===502||res.status===503||res.status===504)?T('The server is busy or waking up (code '+res.status+'). Wait 30 seconds and try again.','সার্ভার ব্যস্ত বা জেগে উঠছে (কোড '+res.status+')। ৩০ সেকেন্ড পর আবার চেষ্টা করুন।'):T('Unexpected server reply (code '+res.status+').','সার্ভার থেকে অপ্রত্যাশিত উত্তর (কোড '+res.status+')।')}));
       $('loadingState').style.display='none';
       if(!res.ok){
         $('emptyState').style.display='block';

@@ -23,7 +23,8 @@ GEMINI_MODELS = [m.strip() for m in os.environ.get(
     "GEMINI_MODEL", "gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-2.5-flash").split(",") if m.strip()]
 _good_model = None
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
-TIMEOUT = 60
+TIMEOUT = 40            # per request
+DEADLINE = 85           # total seconds for all fallbacks (gunicorn kills a worker at 120s)
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
 MAX_BYTES = 6 * 1024 * 1024
 
@@ -105,7 +106,11 @@ def _call_gemini(img_b64, mime, prompt):
     }
     order = ([_good_model] if _good_model else []) + [m for m in GEMINI_MODELS if m != _good_model]
     last = None
+    import time as _t
+    start = _t.time()
     for model in order:
+        if _t.time() - start > DEADLINE - 10:
+            break
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         r = requests.post(url, headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]}, json=payload, timeout=TIMEOUT)
         if r.status_code in (404, 400):          # model not available for this key -> try the next one
