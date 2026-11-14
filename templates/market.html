@@ -56,22 +56,33 @@
 </div>
 
 <div class="market-grid" id="marketGrid">
-  {% for crop, data in prices.items() %}
+  {% for data in view %}
   <div class="market-card" data-trend="{{ data.trend }}">
     <div style="display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:15px;font-weight:700;color:var(--text)">{{ crop }}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text)">{{ data.crop }}</div>
       <span class="trend-{{ data.trend }}">
         {% if data.trend == 'up' %}📈 Rising
         {% elif data.trend == 'down' %}📉 Falling
-        {% else %}➡️ Stable{% endif %}
+        {% elif data.trend == 'stable' %}➡️ Stable
+        {% else %}<span style="color:var(--muted);font-weight:600">Trend: not enough data</span>{% endif %}
       </span>
     </div>
     <div class="price-row">
       <span class="price-big">৳{{ data.price }}</span>
       <span class="price-unit">/ {{ data.unit }}</span>
     </div>
+    {% if data.spark|length >= 3 %}
+    {% set mn = data.spark|min %}{% set mx = data.spark|max %}{% set rg = (mx - mn) or 1 %}{% set n = data.spark|length %}
+    <svg viewBox="0 0 100 24" preserveAspectRatio="none" style="width:100%;height:28px;margin-top:6px" aria-hidden="true">
+      <polyline fill="none" stroke="#2E7D32" stroke-width="1.6" vector-effect="non-scaling-stroke"
+        points="{% for v in data.spark %}{{ (loop.index0 * 100 / (n - 1))|round(1) }},{{ (22 - (v - mn) / rg * 20)|round(1) }} {% endfor %}"/>
+    </svg>
+    {% endif %}
     <div class="tip-box">
       <i class="fas fa-lightbulb" style="color:#F57F17"></i> {{ data.tip }}
+      <div style="font-size:11px;margin-top:4px;opacity:.8">
+        {% if data.kind == 'history' %}{{ 'Based on %d recorded live prices'|format(data.samples) }}{% else %}Seasonal guide (general pattern, not a forecast){% endif %}
+      </div>
     </div>
   </div>
   {% endfor %}

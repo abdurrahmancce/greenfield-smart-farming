@@ -133,6 +133,48 @@
       </div>
     </div>
 
+    {% if fin.farms or fin.monthly %}
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-pie"></i> Profit &amp; Loss Summary</h3></div>
+      <div class="card-body">
+        {% if fin.farms %}
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px">
+          <tr style="text-align:left;color:var(--muted);font-size:12px"><th style="padding:6px">Farm</th><th>Income</th><th>Expense</th><th>Profit</th><th>Per acre</th></tr>
+          {% for f in fin.farms %}
+          <tr style="border-top:1px solid var(--border,#e5e7eb)"><td style="padding:8px 6px"><b>{{ f.farm }}</b><br><small style="color:var(--muted)">{{ f.crop }}</small></td>
+            <td>৳{{ "%.0f"|format(f.income) }}</td><td>৳{{ "%.0f"|format(f.expense) }}</td>
+            <td style="font-weight:700;color:{{ '#2E7D32' if f.profit >= 0 else '#C62828' }}">{{ '-' if f.profit < 0 }}৳{{ "%.0f"|format(f.profit|abs) }}</td>
+            <td>{% if f.per_acre is not none %}{{ '-' if f.per_acre < 0 }}৳{{ f.per_acre|abs }}{% else %}—{% endif %}</td></tr>
+          {% endfor %}
+        </table></div>
+        {% endif %}
+        {% if fin.monthly %}
+        <div style="margin-top:16px;font-weight:600;font-size:13px">Last months</div>
+        {% for m in fin.monthly %}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px">
+          <span style="width:52px;color:var(--muted)">{{ m.label }}</span>
+          <div style="flex:1"><div style="height:7px;background:#43A047;border-radius:4px;width:{{ (m.income / fin.max_month * 100)|round }}%"></div>
+            <div style="height:7px;background:#E57373;border-radius:4px;margin-top:2px;width:{{ (m.expense / fin.max_month * 100)|round }}%"></div></div>
+          <span style="width:84px;text-align:right;font-weight:600;color:{{ '#2E7D32' if m.profit >= 0 else '#C62828' }}">{{ '-' if m.profit < 0 }}৳{{ "%.0f"|format(m.profit|abs) }}</span>
+        </div>
+        {% endfor %}
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">🟩 income &nbsp; 🟥 expense</div>
+        {% endif %}
+        {% if fin.cats %}
+        <div style="margin-top:16px;font-weight:600;font-size:13px">Where the money goes</div>
+        {% for c in fin.cats[:6] %}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px">
+          <span style="width:90px;color:var(--muted)">{{ c.cat }}</span>
+          <div style="flex:1;background:#eef2ee;border-radius:4px;height:8px"><div style="height:8px;border-radius:4px;background:#F9A825;width:{{ c.pct }}%"></div></div>
+          <span style="width:90px;text-align:right">৳{{ "%.0f"|format(c.amount) }} ({{ c.pct }}%)</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+        <div style="font-size:11px;color:var(--muted);margin-top:10px">Calculated only from the income and expenses you have entered.</div>
+      </div>
+    </div>
+    {% endif %}
+
     {% if logs %}
     <div class="card">
       <div class="card-header">

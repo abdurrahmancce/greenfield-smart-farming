@@ -1,0 +1,14 @@
+name: Weather alerts
+on:
+  schedule: [{ cron: "0 */3 * * *" }]
+  workflow_dispatch:
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          URL: ${{ secrets.APP_URL }}
+          TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$TOKEN" ]; then echo "Secrets not set - skipping."; exit 0; fi
+          curl -fsS -m 100 -X POST -H "X-Cron-Token: $TOKEN" "$URL/api/cron/alerts"

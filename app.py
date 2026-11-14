@@ -2,7 +2,7 @@
 GreenField Smart Farming App — app.py v7
 Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profile Photo | Full CRUD
 """
-import os, sqlite3, json, hashlib, secrets, base64, string
+import os, sqlite3, json, hashlib, hmac, secrets, base64, string
 from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -10,6 +10,7 @@ from flask import (Flask, render_template, request, redirect,
                    url_for, jsonify, flash, session, Response, abort)
 import i18n
 import vision
+import farm_tasks
 import time
 
 # ── Google OAuth ──────────────────────────────────────────────────
@@ -35,7 +36,23 @@ APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024   # photo uploads (profile photo / disease photo)
-app.secret_key = os.environ.get("SECRET_KEY", "gf_smartfarm_dev_secret_2024")
+_sk = os.environ.get("SECRET_KEY", "")
+if not _sk:
+    # No SECRET_KEY configured: never fall back to a key that is public in the source code.
+    _seed = os.environ.get("DATABASE_URL", "")
+    if _seed:
+        _sk = hashlib.sha256(("gf-session-v1|" + _seed).encode()).hexdigest()   # stable, not guessable
+    else:
+        _sk = secrets.token_hex(32)                                              # local dev: fresh per start
+    print("[security] SECRET_KEY not set - derived a private key. Set SECRET_KEY in the environment.")
+app.secret_key = _sk
+_IS_HTTPS = os.environ.get("APP_BASE_URL", "").startswith("https://")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=_IS_HTTPS,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+)
 
 # ── Google OAuth setup ─────────────────────────────────────────────
 if GOOGLE_OAUTH_ENABLED:
@@ -341,6 +358,29 @@ def init_db():
             photo_key     TEXT    DEFAULT '',
             created_at    TEXT    DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS price_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            crop       TEXT    NOT NULL,
+            price      REAL    NOT NULL,
+            unit       TEXT    DEFAULT 'kg',
+            day        TEXT    NOT NULL,
+            created_at TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS push_subs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            endpoint   TEXT    NOT NULL UNIQUE,
+            p256dh     TEXT    NOT NULL,
+            auth       TEXT    NOT NULL,
+            lang       TEXT    DEFAULT 'en',
+            created_at TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS push_log (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            task_id TEXT    NOT NULL,
+            day     TEXT    NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS expense_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             farm_id     INTEGER NOT NULL,
@@ -435,6 +475,80 @@ If you didn't request this, you can safely ignore this email.
 # ══════════════════════════════════════════════════════════════════
 #  AUTH HELPERS
 # ══════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════
+#  SECURITY HELPERS
+# ══════════════════════════════════════════════════════════════════
+from markupsafe import escape as _esc
+import threading
+from urllib.parse import urlparse
+
+_throttle_lock = threading.Lock()
+_throttle_hits = {}          # key -> [timestamps]
+
+def client_ip():
+    """Render's proxy appends the real client address as the LAST X-Forwarded-For entry."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[-1].strip()[:64]
+    return (request.remote_addr or "?")[:64]
+
+def throttle_blocked(key, limit, window):
+    """True if `key` already has `limit` hits within `window` seconds (read-only check)."""
+    now = time.time()
+    with _throttle_lock:
+        hits = [t for t in _throttle_hits.get(key, []) if now - t < window]
+        _throttle_hits[key] = hits
+        return len(hits) >= limit
+
+def throttle_hit(key):
+    with _throttle_lock:
+        _throttle_hits.setdefault(key, []).append(time.time())
+        if len(_throttle_hits) > 5000:                      # keep memory bounded
+            cutoff = time.time() - 3600
+            for k in [k for k, v in _throttle_hits.items() if not v or v[-1] < cutoff]:
+                _throttle_hits.pop(k, None)
+
+def throttle_clear(key):
+    with _throttle_lock:
+        _throttle_hits.pop(key, None)
+
+def safe_next(url):
+    """Only allow redirects to a path on this same site (blocks open-redirect via ?next=)."""
+    if not url or not isinstance(url, str):
+        return None
+    if not url.startswith("/") or url.startswith("//") or "\\" in url:
+        return None
+    p = urlparse(url)
+    return url if not p.netloc and not p.scheme else None
+
+def hash_token(t):
+    return hashlib.sha256(t.encode()).hexdigest()
+
+MIN_PASSWORD = 8
+_DUMMY_HASH = generate_password_hash("gf-dummy-password-for-timing")
+
+@app.before_request
+def csrf_origin_check():
+    """CSRF defence: a state-changing browser request must come from this same site."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        src = request.headers.get("Origin") or request.headers.get("Referer")
+        if src:
+            if urlparse(src).netloc.lower() != request.host.lower():
+                return jsonify({"error": "Blocked: cross-site request."}), 403
+        elif request.headers.get("Sec-Fetch-Site") == "cross-site":
+            return jsonify({"error": "Blocked: cross-site request."}), 403
+
+@app.after_request
+def security_headers(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)")
+    if _IS_HTTPS:
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return resp
+
 def login_required(f):
     """Decorator — redirects to /login if not logged in."""
     @wraps(f)
@@ -649,9 +763,12 @@ def register():
         errors   = []
         if not name:              errors.append("Full name is required.")
         if not email:             errors.append("Email is required.")
-        if len(password) < 6:    errors.append("Password must be at least 6 characters.")
+        if len(password) < MIN_PASSWORD: errors.append(f"Password must be at least {MIN_PASSWORD} characters.")
+        if throttle_blocked("reg:" + client_ip(), 10, 3600):
+            errors.append("Too many sign-up attempts from this network. Please try again later.")
         if password != confirm:   errors.append("Passwords do not match.")
         if not errors:
+            throttle_hit("reg:" + client_ip())
             conn = get_db()
             if conn.execute("SELECT id FROM users WHERE email=?",(email,)).fetchone():
                 errors.append("An account with this email already exists.")
@@ -666,7 +783,8 @@ def register():
                 session["user_id"]   = user["id"]
                 session["user_name"] = user["name"]
                 conn.close()
-                flash(f"🌱 Welcome to GreenField, <strong>{name}</strong>! Your account is ready.", "success")
+                session.permanent = True
+                flash(f"🌱 Welcome to GreenField, <strong>{_esc(name)}</strong>! Your account is ready.", "success")
                 return redirect(url_for("dashboard"))
             conn.close()
         for e in errors: flash(e, "error")
@@ -677,19 +795,31 @@ def login():
     if "user_id" in session:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
-        email    = request.form.get("email","").strip().lower()
-        password = request.form.get("password","")
+        email    = request.form.get("email","").strip().lower()[:200]
+        password = request.form.get("password","")[:1000]
+        ip       = client_ip()
+        k_ip, k_em = "login-ip:" + ip, "login-em:" + email
+        if throttle_blocked(k_ip, 25, 900) or throttle_blocked(k_em, 6, 900):
+            log_activity("blocked", "login", f"throttled {email}")
+            flash("Too many failed sign-in attempts. Please wait 15 minutes and try again, "
+                  "or use “Forgot password”.", "error")
+            return render_template("login.html", google_enabled=GOOGLE_OAUTH_ENABLED), 429
         conn     = get_db()
         user     = conn.execute("SELECT * FROM users WHERE email=?",(email,)).fetchone()
         conn.close()
-        if user and check_password_hash(user["password"], password):
+        # Always run one password hash check so timing does not reveal whether the email exists.
+        ok = check_password_hash(user["password"] if user else _DUMMY_HASH, password) and bool(user)
+        if ok:
+            throttle_clear(k_em)
             _lang = session.get("lang")
             session.clear()
             if _lang: session["lang"] = _lang
+            session.permanent = True
             session["user_id"]   = user["id"]
             session["user_name"] = user["name"]
-            flash(f"👋 Welcome back, <strong>{user['name']}</strong>!", "success")
-            return redirect(request.args.get("next") or url_for("dashboard"))
+            flash(f"👋 Welcome back, <strong>{_esc(user['name'])}</strong>!", "success")
+            return redirect(safe_next(request.args.get("next")) or url_for("dashboard"))
+        throttle_hit(k_ip); throttle_hit(k_em)
         flash("Invalid email or password. Please try again.", "error")
     return render_template("login.html", google_enabled=GOOGLE_OAUTH_ENABLED)
 
@@ -756,10 +886,10 @@ def google_callback():
         session["user_id"]   = uid
         session["user_name"] = uname
         session["user_email"]= email
-        flash(f"✅ Logged in with Google as {uname}.", "success")
+        flash(f"✅ Logged in with Google as {_esc(uname)}.", "success")
         return redirect(url_for("dashboard"))
     except Exception as e:
-        flash(f"Google login failed: {str(e)}", "error")
+        flash("Google login failed. Please try again.", "error")
         return redirect(url_for("login"))
 
 
@@ -770,7 +900,12 @@ def forgot_password():
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
+        email = request.form.get("email", "").strip().lower()[:200]
+        k = "forgot:" + client_ip()
+        if throttle_blocked(k, 6, 3600):
+            flash("Too many reset requests. Please try again in an hour.", "error")
+            return render_template("forgot_password.html"), 429
+        throttle_hit(k)
         conn  = get_db()
         user  = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
 
@@ -779,9 +914,10 @@ def forgot_password():
         if user:
             token      = secrets.token_urlsafe(32)
             expires_at = (datetime.now() + timedelta(hours=1)).isoformat()
+            conn.execute("UPDATE password_resets SET used=1 WHERE user_id=? AND used=0", (user["id"],))  # old links die
             conn.execute(
                 "INSERT INTO password_resets (user_id, token, expires_at, used) VALUES (?,?,?,0)",
-                (user["id"], token, expires_at)
+                (user["id"], hash_token(token), expires_at)          # only a hash is stored
             )
             conn.commit()
             reset_link = f"{APP_BASE_URL}/reset-password/{token}"
@@ -803,7 +939,7 @@ def reset_password(token):
 
     conn = get_db()
     reset_row = conn.execute(
-        "SELECT * FROM password_resets WHERE token=?", (token,)
+        "SELECT * FROM password_resets WHERE token=?", (hash_token(token),)
     ).fetchone()
 
     valid = False
@@ -823,8 +959,8 @@ def reset_password(token):
         new_pw  = request.form.get("new_password", "")
         confirm = request.form.get("confirm_password", "")
 
-        if len(new_pw) < 6:
-            flash("Password must be at least 6 characters.", "error")
+        if len(new_pw) < MIN_PASSWORD:
+            flash(f"Password must be at least {MIN_PASSWORD} characters.", "error")
         elif new_pw != confirm:
             flash("Passwords do not match.", "error")
         else:
@@ -833,7 +969,7 @@ def reset_password(token):
                 (generate_password_hash(new_pw), reset_row["user_id"])
             )
             conn.execute(
-                "UPDATE password_resets SET used=1 WHERE token=?", (token,)
+                "UPDATE password_resets SET used=1 WHERE user_id=?", (reset_row["user_id"],)
             )
             conn.commit()
             conn.close()
@@ -896,8 +1032,8 @@ def profile():
             db_user    = conn.execute("SELECT password FROM users WHERE id=?", (uid,)).fetchone()
             if not check_password_hash(db_user["password"], current_pw):
                 flash("Current password is incorrect.", "error")
-            elif len(new_pw) < 6:
-                flash("New password must be at least 6 characters.", "error")
+            elif len(new_pw) < MIN_PASSWORD:
+                flash(f"New password must be at least {MIN_PASSWORD} characters.", "error")
             elif new_pw != confirm_pw:
                 flash("Passwords do not match.", "error")
             else:
@@ -1000,7 +1136,7 @@ def dashboard():
         total_farms=total_farms, total_crops=total_crops,
         total_area=total_area,   total_notes=total_notes,
         recent_farms=recent_farms, recent_notes=recent_notes,
-        crop_dist=crop_dist,     weather=get_weather())
+        crop_dist=crop_dist,     weather=get_weather(), push_enabled=PUSH_ENABLED)
 
 @app.route("/farms")
 @login_required
@@ -1039,7 +1175,7 @@ def add_farm():
         "INSERT INTO farms (user_id,farm_name,crop_type,location,area,planting_date,status) VALUES (?,?,?,?,?,?,?)",
         (uid,name,crop,loc,area_f,pdate,status))
     conn.commit(); conn.close()
-    flash(f"🌱 Farm <strong>{name}</strong> added!", "success")
+    flash(f"🌱 Farm <strong>{_esc(name)}</strong> added!", "success")
     return redirect(url_for("farms"))
 
 @app.route("/farms/edit/<int:fid>", methods=["POST"])
@@ -1059,7 +1195,7 @@ def edit_farm(fid):
         "UPDATE farms SET farm_name=?,crop_type=?,location=?,area=?,planting_date=?,status=? WHERE id=? AND user_id=?",
         (name,crop,loc,area_f,pdate,status,fid,uid))
     conn.commit(); conn.close()
-    flash(f"✅ Farm <strong>{name}</strong> updated.", "success")
+    flash(f"✅ Farm <strong>{_esc(name)}</strong> updated.", "success")
     return redirect(url_for("farms"))
 
 @app.route("/farms/delete/<int:fid>", methods=["POST"])
@@ -1074,7 +1210,7 @@ def delete_farm(fid):
     conn.execute("DELETE FROM crop_notes WHERE farm_id=? AND user_id=?",(fid,uid))
     conn.execute("DELETE FROM farms WHERE id=? AND user_id=?",(fid,uid))
     conn.commit(); conn.close()
-    flash(f"🗑️ Farm <strong>{row['farm_name']}</strong> deleted.", "success")
+    flash(f"🗑️ Farm <strong>{_esc(row['farm_name'])}</strong> deleted.", "success")
     return redirect(url_for("farms"))
 
 # ── Notes CRUD ────────────────────────────────────────────────────
@@ -1606,6 +1742,42 @@ def delete_irrigation(iid):
 # ══════════════════════════════════════════════════════════════════
 #  FARM EXPENSE TRACKER
 # ══════════════════════════════════════════════════════════════════
+def finance_summary(uid):
+    """Profit & loss per farm, expense by category and the last 6 months (all from the user's own entries)."""
+    conn = get_db()
+    farms = conn.execute("SELECT id, farm_name, crop_type, area FROM farms WHERE user_id=? ORDER BY farm_name", (uid,)).fetchall()
+    rows = conn.execute("SELECT farm_id, type, category, amount, date FROM expense_log WHERE user_id=?", (uid,)).fetchall()
+    conn.close()
+    per = {f["id"]: {"farm": f["farm_name"], "crop": f["crop_type"], "area": f["area"] or 0, "income": 0.0, "expense": 0.0} for f in farms}
+    cats, months = {}, {}
+    for r in rows:
+        amt = float(r["amount"] or 0)
+        p = per.get(r["farm_id"])
+        if p is not None:
+            p["income" if r["type"] == "income" else "expense"] += amt
+        if r["type"] != "income":
+            cats[r["category"] or "Other"] = cats.get(r["category"] or "Other", 0) + amt
+        m = (r["date"] or "")[:7]
+        if m:
+            b = months.setdefault(m, {"income": 0.0, "expense": 0.0})
+            b["income" if r["type"] == "income" else "expense"] += amt
+    farm_rows = []
+    for p in per.values():
+        if p["income"] or p["expense"]:
+            p["profit"] = p["income"] - p["expense"]
+            p["per_acre"] = round(p["profit"] / p["area"]) if p["area"] else None
+            farm_rows.append(p)
+    farm_rows.sort(key=lambda x: x["profit"], reverse=True)
+    keys = sorted(months)[-6:]
+    monthly = [{"m": k, "label": datetime.strptime(k, "%Y-%m").strftime("%b %y"),
+                "income": months[k]["income"], "expense": months[k]["expense"],
+                "profit": months[k]["income"] - months[k]["expense"]} for k in keys]
+    tot_exp = sum(cats.values())
+    cat_rows = [{"cat": c, "amount": a, "pct": round(a / tot_exp * 100) if tot_exp else 0}
+                for c, a in sorted(cats.items(), key=lambda x: -x[1])]
+    return {"farms": farm_rows, "cats": cat_rows, "monthly": monthly,
+            "max_month": max([max(m["income"], m["expense"]) for m in monthly] or [1]) or 1}
+
 @app.route("/expenses")
 @login_required
 def expenses_page():
@@ -1634,7 +1806,8 @@ def expenses_page():
     today = datetime.now().strftime("%Y-%m-%d")
     return render_template("expenses.html", farms=farms, logs=logs,
                            total_income=total_income, total_expense=total_expense,
-                           profit=profit, today=today, farm_id_filter=farm_id_filter)
+                           profit=profit, today=today, farm_id_filter=farm_id_filter,
+                           fin=finance_summary(uid))
 
 @app.route("/expenses/add", methods=["POST"])
 @login_required
@@ -1791,12 +1964,93 @@ def get_market_prices():
         return _MARKET_FALLBACK, "fallback", now
 
 
+def _record_prices(prices, source):
+    """Keep a daily price history - only REAL (live) quotes are stored, never the sample values."""
+    if source != "live":
+        return
+    day = datetime.now().strftime("%Y-%m-%d")
+    try:
+        conn = get_db()
+        for crop, d in prices.items():
+            if conn.execute("SELECT id FROM price_history WHERE crop=? AND day=?", (crop, day)).fetchone():
+                conn.execute("UPDATE price_history SET price=? WHERE crop=? AND day=?", (float(d["price"]), crop, day))
+            else:
+                conn.execute("INSERT INTO price_history (crop,price,unit,day) VALUES (?,?,?,?)",
+                             (crop, float(d["price"]), d.get("unit", "kg"), day))
+        conn.commit(); conn.close()
+    except Exception as e:
+        print("[market] could not record prices:", repr(e))
+
+def _calendar_for(crop):
+    n = crop.lower()
+    for k, v in CROP_CALENDAR.items():
+        base = k.lower().split(" (")[0]
+        if base in n or n.split(" (")[0] in k.lower():
+            return v
+    return None
+
+_MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+def market_view(prices, source, lang="en"):
+    """Add a REAL trend (from stored live history) or an honest seasonal hint to every crop."""
+    bn = lang == "bn"
+    hist = {}
+    try:
+        conn = get_db()
+        since = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+        for r in conn.execute("SELECT crop, price, day FROM price_history WHERE day>=? ORDER BY day", (since,)).fetchall():
+            hist.setdefault(r["crop"], []).append((r["day"], float(r["price"])))
+        conn.close()
+    except Exception:
+        pass
+    mon = datetime.now().strftime("%b")
+    out = []
+    for crop, d in prices.items():
+        pts = hist.get(crop, [])
+        trend, tip, kind = "unknown", "", "seasonal"
+        if source == "live" and len(pts) >= 3:
+            vals = [v for _, v in pts]
+            cur, prev = d["price"], vals[:-1]
+            avg = sum(prev) / len(prev)
+            chg = (cur - avg) / avg * 100 if avg else 0
+            trend = "up" if chg >= 3 else "down" if chg <= -3 else "stable"
+            hi, lo = max(vals), min(vals)
+            if cur >= lo + 0.75 * (hi - lo) and hi > lo:
+                tip = (f"দাম গত {len(pts)} দিনের সর্বোচ্চের কাছাকাছি — বিক্রির ভালো সময়।" if bn else
+                       f"Price is near its {len(pts)}-day high — a good moment to sell if your crop is ready.")
+            elif cur <= lo + 0.25 * (hi - lo) and hi > lo:
+                tip = (f"দাম গত {len(pts)} দিনের সর্বনিম্নের কাছাকাছি — সম্ভব হলে সংরক্ষণ করে অপেক্ষা করুন।" if bn else
+                       f"Price is near its {len(pts)}-day low — hold and store if you can.")
+            else:
+                tip = (f"দাম গত {len(pts)} দিনের মাঝামাঝি।" if bn else f"Price is mid-range for the last {len(pts)} days.")
+            kind = "history"
+        else:
+            cal = _calendar_for(crop)
+            if cal and mon in cal["harvest"]:
+                tip = ("এখন ফসল তোলার মৌসুম — সরবরাহ বেশি থাকায় দাম সাধারণত কম থাকে। পারলে সংরক্ষণ করুন।" if bn else
+                       "Harvest season now — supply is high, so prices are usually lowest. Store if you can.")
+            elif cal:
+                i = _MON.index(mon)
+                after = any(_MON[(i - k) % 12] in cal["harvest"] for k in (1, 2, 3))
+                tip = ("ফসল তোলার কয়েক মাস পর — দাম সাধারণত বাড়তে থাকে।" if bn and after else
+                       "বিক্রির জন্য নির্দিষ্ট মৌসুমি পরামর্শ নেই।" if bn else
+                       "A few months after harvest — prices usually recover." if after else
+                       "No seasonal pattern to flag right now.")
+            else:
+                tip = "এই ফসলের জন্য মৌসুমি তথ্য নেই।" if bn else "No seasonal data for this crop."
+        spark = [v for _, v in pts][-30:]
+        out.append({"crop": crop, "price": d["price"], "unit": d["unit"], "trend": trend, "tip": tip,
+                    "kind": kind, "spark": spark, "samples": len(pts)})
+    return out
+
 @app.route("/market")
 @login_required
 def market_page():
     prices, source, fetched_at = get_market_prices()
+    _record_prices(prices, source)
     updated_str = fetched_at.strftime("%d %b %Y, %I:%M %p") if fetched_at else datetime.now().strftime("%d %b %Y")
     return render_template("market.html", prices=prices,
+                           view=market_view(prices, source, session.get("lang", "en")),
                            updated=updated_str,
                            price_source=source)
 
@@ -2131,6 +2385,177 @@ def api_scan_to_growth(sid):
     conn.execute("UPDATE disease_scans SET farm_id=? WHERE id=? AND user_id=?", (fid, sid, uid))
     conn.commit(); conn.close()
     return jsonify({"ok": True})
+
+
+
+# ══════════════════════════════════════════════════════════════════
+#  TODAY'S TASKS  (rule-based: crop age + last irrigation + 24 h forecast)
+# ══════════════════════════════════════════════════════════════════
+def tasks_for_user(uid, lang="en"):
+    from concurrent.futures import ThreadPoolExecutor
+    import requests as _rq
+    conn = get_db()
+    farms = [dict(r) for r in conn.execute(
+        "SELECT id, farm_name, crop_type, location, planting_date, status FROM farms WHERE user_id=? ORDER BY farm_name LIMIT 12",
+        (uid,)).fetchall()]
+    info = {}
+    for f in farms:
+        g = conn.execute("SELECT expected_days, growth_stage FROM crop_growth WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
+                         (f["id"], uid)).fetchone()
+        i = conn.execute("SELECT date FROM irrigation_log WHERE farm_id=? AND user_id=? ORDER BY date DESC LIMIT 1",
+                         (f["id"], uid)).fetchone()
+        sc = conn.execute("""SELECT diagnosis, health_status, severity, created_at FROM disease_scans
+                             WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1""", (f["id"], uid)).fetchone()
+        info[f["id"]] = (dict(g) if g else None, i["date"] if i else None, dict(sc) if sc else None)
+    conn.close()
+    active = [f for f in farms if (f.get("status") or "").lower() not in ("harvested", "inactive", "closed")]
+    cities = sorted({(f["location"] or "").strip() for f in active if f.get("location")})
+    wx = {}
+    if OPENWEATHER_KEY and cities:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            res = list(ex.map(lambda c: farm_tasks.fetch_forecast(c, OPENWEATHER_KEY, _rq), cities[:6]))
+        wx = dict(zip(cities[:6], res))
+    tasks = []
+    for f in active:
+        g, li, sc = info[f["id"]]
+        tasks += farm_tasks.build_tasks(f, g, li, sc, wx.get((f["location"] or "").strip()), lang=lang)
+    return farm_tasks.sort_tasks(tasks), bool(wx and any(wx.values())), len(active)
+
+@app.route("/api/today-tasks")
+@login_required
+def api_today_tasks():
+    tasks, has_weather, n_farms = tasks_for_user(session["user_id"], session.get("lang", "en"))
+    return jsonify({"tasks": tasks, "weather": has_weather, "farms": n_farms,
+                    "date": datetime.now().strftime("%Y-%m-%d")})
+
+
+# ══════════════════════════════════════════════════════════════════
+#  DOWNLOAD MY DATA  (own data only, JSON)
+# ══════════════════════════════════════════════════════════════════
+@app.route("/account/export")
+@login_required
+def export_my_data():
+    uid = session["user_id"]
+    conn = get_db()
+    def rows(sql):
+        return [dict(r) for r in conn.execute(sql, (uid,)).fetchall()]
+    data = {
+        "exported_at": datetime.now().isoformat(timespec="seconds"),
+        "profile": rows("SELECT id, name, email, account_id, created_at FROM users WHERE id=?"),
+        "farms": rows("SELECT * FROM farms WHERE user_id=?"),
+        "farm_notes": rows("SELECT * FROM crop_notes WHERE user_id=?"),
+        "growth": rows("SELECT * FROM crop_growth WHERE user_id=?"),
+        "irrigation": rows("SELECT * FROM irrigation_log WHERE user_id=?"),
+        "expenses": rows("SELECT * FROM expense_log WHERE user_id=?"),
+        "fertilizer_history": rows("SELECT * FROM fertilizer_history WHERE user_id=?"),
+        "disease_scans": rows("SELECT id, farm_id, crop, diagnosis, health_status, confidence, severity, created_at FROM disease_scans WHERE user_id=?"),
+    }
+    conn.close()
+    r = Response(json.dumps(data, ensure_ascii=False, indent=2, default=str), mimetype="application/json")
+    r.headers["Content-Disposition"] = f'attachment; filename="greenfield-my-data-{datetime.now():%Y%m%d}.json"'
+    r.headers["Cache-Control"] = "no-store"
+    return r
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PUSH ALERTS  (Web Push - needs VAPID keys in the environment; otherwise the feature stays hidden)
+# ══════════════════════════════════════════════════════════════════
+VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT     = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")
+CRON_TOKEN        = os.environ.get("CRON_TOKEN", "")
+PUSH_ENABLED      = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
+PUSH_KINDS        = {"rain_alert", "heat_alert", "fungal", "harvest_now"}      # only what is worth waking a phone for
+
+@app.route("/api/push/key")
+@login_required
+def api_push_key():
+    if not PUSH_ENABLED:
+        return jsonify({"enabled": False}), 200
+    return jsonify({"enabled": True, "key": VAPID_PUBLIC_KEY})
+
+@app.route("/api/push/subscribe", methods=["POST"])
+@login_required
+def api_push_subscribe():
+    if not PUSH_ENABLED:
+        return jsonify({"error": "Alerts are not configured on this server."}), 503
+    b = request.get_json(silent=True) or {}
+    ep, keys = (b.get("endpoint") or ""), (b.get("keys") or {})
+    if not ep.startswith("https://") or not keys.get("p256dh") or not keys.get("auth") or len(ep) > 1000:
+        return jsonify({"error": "Invalid subscription."}), 400
+    uid = session["user_id"]
+    conn = get_db()
+    conn.execute("DELETE FROM push_subs WHERE endpoint=?", (ep,))
+    conn.execute("INSERT INTO push_subs (user_id,endpoint,p256dh,auth,lang) VALUES (?,?,?,?,?)",
+                 (uid, ep, keys["p256dh"][:200], keys["auth"][:100], session.get("lang", "en")))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/push/unsubscribe", methods=["POST"])
+@login_required
+def api_push_unsubscribe():
+    ep = (request.get_json(silent=True) or {}).get("endpoint", "")
+    conn = get_db()
+    conn.execute("DELETE FROM push_subs WHERE endpoint=? AND user_id=?", (ep, session["user_id"]))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
+
+def send_push(sub, payload):
+    """Send one notification. Returns 'ok', 'gone' (subscription expired) or 'error'."""
+    try:
+        from pywebpush import webpush, WebPushException
+    except Exception:
+        return "error"
+    try:
+        webpush(subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
+                data=json.dumps(payload, ensure_ascii=False), vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT}, ttl=6 * 3600)
+        return "ok"
+    except WebPushException as e:
+        code = getattr(getattr(e, "response", None), "status_code", None)
+        return "gone" if code in (404, 410) else "error"
+    except Exception:
+        return "error"
+
+@app.route("/api/cron/alerts", methods=["POST"])
+def api_cron_alerts():
+    """Called every few hours by the GitHub Actions 'alerts' workflow. Protected by CRON_TOKEN."""
+    tok = request.headers.get("X-Cron-Token", "")
+    if not CRON_TOKEN or not PUSH_ENABLED or not hmac.compare_digest(tok, CRON_TOKEN):
+        return jsonify({"error": "forbidden"}), 403
+    day = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    subs = [dict(r) for r in conn.execute("SELECT * FROM push_subs").fetchall()]
+    conn.close()
+    sent = gone = 0
+    by_user = {}
+    for s in subs:
+        by_user.setdefault(s["user_id"], []).append(s)
+    for uid, usubs in by_user.items():
+        lang = usubs[0].get("lang") or "en"
+        try:
+            tasks, _, _ = tasks_for_user(uid, lang)
+        except Exception as e:
+            print("[alerts] tasks failed", uid, repr(e)); continue
+        conn = get_db()
+        for t in tasks:
+            if t["kind"] not in PUSH_KINDS:
+                continue
+            if conn.execute("SELECT id FROM push_log WHERE user_id=? AND task_id=? AND day=?", (uid, t["id"], day)).fetchone():
+                continue
+            conn.execute("INSERT INTO push_log (user_id,task_id,day) VALUES (?,?,?)", (uid, t["id"], day))
+            conn.commit()
+            payload = {"title": f'{t["icon"]} {t["title"]} — {t["farm"]}', "body": t["detail"][:180],
+                       "url": t["link"] or "/dashboard", "tag": t["id"]}
+            for s in usubs:
+                r = send_push(s, payload)
+                if r == "ok": sent += 1
+                elif r == "gone":
+                    gone += 1
+                    conn.execute("DELETE FROM push_subs WHERE id=?", (s["id"],)); conn.commit()
+        conn.execute("DELETE FROM push_log WHERE day<?", ((datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),))
+        conn.commit(); conn.close()
+    return jsonify({"users": len(by_user), "sent": sent, "expired": gone})
 
 
 # ── Entry ─────────────────────────────────────────────────────────

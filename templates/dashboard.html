@@ -14,6 +14,26 @@
   <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-book-open"></i></div><div class="stat-info"><h3>{{ total_notes }}</h3><p>{{ 'খামার নোট' if is_bn else 'Farm Notes' }}</p></div></div>
 </div>
 
+<!-- Today's tasks -->
+<div class="card mt-20" id="todayCard">
+  <div class="card-header">
+    <h2><i class="fas fa-clipboard-check"></i> {{ 'আজকের কাজ' if is_bn else "Today's Tasks" }}</h2>
+    <button class="btn btn-secondary btn-sm" id="pushBtn" style="display:none" type="button"><i class="fas fa-bell"></i> <span>{{ 'অ্যালার্ট চালু করুন' if is_bn else 'Enable alerts' }}</span></button>
+  </div>
+  <div class="card-body">
+    <div id="tasksBox" style="font-size:13.5px;color:var(--muted)">{{ 'লোড হচ্ছে…' if is_bn else 'Loading…' }}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:10px">{{ 'সাধারণ নিয়ম ও আবহাওয়া পূর্বাভাসের ভিত্তিতে তৈরি — স্থানীয় কৃষি অফিসের পরামর্শ সবসময় অগ্রাধিকার পাবে।' if is_bn else 'Built from general crop rules and the weather forecast — always follow your local agriculture officer’s advice.' }}</div>
+  </div>
+</div>
+<style>
+.tk{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border,#e5e7eb)}
+.tk:last-child{border-bottom:0}.tk input{margin-top:4px;width:18px;height:18px;accent-color:#2E7D32;flex:none}
+.tk .ic{font-size:20px;flex:none}.tk b{display:block;color:var(--text);font-size:14px}
+.tk small{display:block;color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:2px}
+.tk.done{opacity:.5}.tk.done b{text-decoration:line-through}
+.tk .pr0{color:#C62828}.tk a{font-size:12px;color:#2E7D32;font-weight:600}
+</style>
+
 <div class="dash-grid">
   <!-- Recent Farms -->
   <div class="card">
@@ -156,4 +176,58 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var BN = {{ 'true' if is_bn else 'false' }}, box = document.getElementById('tasksBox');
+  function T(en,bn){return BN?bn:en;}
+  var key = 'gf-done-' + new Date().toISOString().slice(0,10), done = {};
+  try { done = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e){}
+  function esc(x){var d=document.createElement('div');d.textContent=x==null?'':x;return d.innerHTML;}
+  fetch('/api/today-tasks',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
+    if(!d.farms){ box.innerHTML = T('Add a farm to get daily tasks for it.','দৈনিক কাজ পেতে একটি খামার যোগ করুন।'); return; }
+    var h = '';
+    if(!d.weather) h += '<div style="background:#FFF8E1;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12.5px">'+T('Weather forecast is unavailable right now, so weather-based tasks are hidden.','এখন আবহাওয়া পূর্বাভাস পাওয়া যাচ্ছে না, তাই আবহাওয়াভিত্তিক কাজ দেখানো হচ্ছে না।')+'</div>';
+    if(!d.tasks.length){ box.innerHTML = h + T('Nothing urgent today. 🌱','আজ জরুরি কিছু নেই। 🌱'); return; }
+    d.tasks.forEach(function(t){
+      h += '<label class="tk'+(done[t.id]?' done':'')+'" data-id="'+esc(t.id)+'"><input type="checkbox"'+(done[t.id]?' checked':'')+'>'
+        + '<span class="ic">'+esc(t.icon)+'</span><span><b class="pr'+t.priority+'">'+esc(t.title)+' · '+esc(t.farm)+'</b>'
+        + '<small>'+esc(t.detail)+'</small>'+(t.link?'<a href="'+esc(t.link)+'">'+T('Open','খুলুন')+' →</a>':'')+'</span></label>';
+    });
+    box.innerHTML = h;
+    box.addEventListener('change', function(e){
+      var l = e.target.closest('.tk'); if(!l) return;
+      done[l.dataset.id] = e.target.checked ? 1 : 0; l.classList.toggle('done', e.target.checked);
+      try { localStorage.setItem(key, JSON.stringify(done)); } catch(x){}
+    });
+  }).catch(function(){ box.innerHTML = T('Could not load tasks. Check your connection.','কাজ লোড করা যায়নি। ইন্টারনেট দেখুন।'); });
+
+  // ---- push alerts (only shown when the server has VAPID keys and the browser supports it)
+  var btn = document.getElementById('pushBtn');
+  if(!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+  function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o;}
+  function label(on){btn.querySelector('span').textContent = on ? T('Alerts on ✓','অ্যালার্ট চালু ✓') : T('Enable alerts','অ্যালার্ট চালু করুন');}
+  fetch('/api/push/key',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(k){
+    if(!k.enabled) return;
+    btn.style.display='';
+    navigator.serviceWorker.ready.then(function(reg){
+      reg.pushManager.getSubscription().then(function(s){ label(!!s); });
+      btn.onclick = function(){
+        reg.pushManager.getSubscription().then(function(s){
+          if(s){ fetch('/api/push/unsubscribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})});
+                 s.unsubscribe(); label(false); return; }
+          Notification.requestPermission().then(function(p){
+            if(p!=='granted'){ alert(T('Notifications are blocked in your browser settings.','ব্রাউজারে নোটিফিকেশন বন্ধ আছে।')); return; }
+            reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.key)}).then(function(sub){
+              return fetch('/api/push/subscribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub.toJSON())});
+            }).then(function(){label(true);}).catch(function(){alert(T('Could not enable alerts.','অ্যালার্ট চালু করা যায়নি।'));});
+          });
+        });
+      };
+    });
+  }).catch(function(){});
+})();
+</script>
 {% endblock %}
