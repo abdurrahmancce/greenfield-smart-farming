@@ -154,6 +154,16 @@ html[data-theme="dark"] .report-paper .stage-pill{background:rgba(129,199,132,.1
           <div class="pnl-lbl">{{ 'Net Profit' if profit >= 0 else 'Net Loss' }}</div>
         </div>
       </div>
+      {% if fin.farms %}
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px">
+        <tr style="text-align:left;color:#666"><th style="padding:4px 6px">Farm</th><th>Income</th><th>Expense</th><th>Profit</th></tr>
+        {% for f in fin.farms %}
+        <tr style="border-top:1px solid #ddd"><td style="padding:5px 6px">{{ f.farm }} <span style="color:#888">({{ f.crop }})</span></td>
+          <td>৳{{ "%.0f"|format(f.income) }}</td><td>৳{{ "%.0f"|format(f.expense) }}</td>
+          <td style="font-weight:700;color:{{ '#2E7D32' if f.profit >= 0 else '#C62828' }}">{{ '-' if f.profit < 0 }}৳{{ "%.0f"|format(f.profit|abs) }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
 
       {% if expenses %}
       <div class="rp-table-wrap">

@@ -172,7 +172,7 @@
 {# ── 7-day forecast ───────────────────────────────────────────── #}
 <div class="card">
   <div class="card-header">
-    <h2><i class="fas fa-calendar-week"></i> 7-Day Forecast</h2>
+    <h2><i class="fas fa-calendar-week"></i> 5-Day Forecast</h2>
     {% if weather.source=='live' %}
     <span class="badge badge-live">Live</span>
     {% else %}
@@ -185,8 +185,8 @@
       <div class="forecast-day" title="{{ day.desc }}">
         <div class="day">{{ day.day }}</div>
         <i class="fas fa-{{ day.icon }}"></i>
-        <div class="temp">{{ day.temp }}°</div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px">{{ day.desc }}</div>
+        <div class="temp">{{ day.temp }}°<span style="font-size:11px;color:var(--muted)"> / {{ day.lo }}°</span></div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">{{ day.desc }}{% if day.rain %} · {{ day.rain }} mm{% endif %}</div>
       </div>
       {% endfor %}
     </div>

@@ -687,7 +687,7 @@ def get_weather(city="Chittagong"):
                 raw = json.loads(r.read())
             with urllib.request.urlopen(
                 f"https://api.openweathermap.org/data/2.5/forecast"
-                f"?q={q}&appid={OPENWEATHER_KEY}&units=metric&cnt=7", timeout=5) as r:
+                f"?q={q}&appid={OPENWEATHER_KEY}&units=metric&cnt=40", timeout=5) as r:
                 fr = json.loads(r.read())
 
             # UV Index requires lat/lon via the free "uvi" endpoint —
@@ -704,16 +704,24 @@ def get_weather(city="Chittagong"):
             except Exception:
                 pass  # UV endpoint unavailable on some free-tier keys — keep dash rather than fail the whole request
 
-            forecast, seen = [], set()
-            for item in fr.get("list",[]):
-                day = item["dt_txt"][:10]
-                if day not in seen:
-                    seen.add(day)
-                    forecast.append({"day":datetime.strptime(day,"%Y-%m-%d").strftime("%a"),
-                                     "temp":round(item["main"]["temp"]),
-                                     "icon":_owm_icon(item["weather"][0]["icon"]),
-                                     "desc":item["weather"][0]["main"]})
-                if len(forecast)==7: break
+            # OpenWeather's free plan gives 3-hourly data for ~5 days: group it by calendar day.
+            days_map, order = {}, []
+            for item in fr.get("list", []):
+                d = item["dt_txt"][:10]
+                if d not in days_map:
+                    days_map[d] = []; order.append(d)
+                days_map[d].append(item)
+            forecast = []
+            for d in order[:6]:
+                its = days_map[d]
+                pick = min(its, key=lambda x: abs(int(x["dt_txt"][11:13]) - 12))      # slot closest to midday
+                rain = sum((x.get("rain") or {}).get("3h", 0) or 0 for x in its)
+                forecast.append({"day": datetime.strptime(d, "%Y-%m-%d").strftime("%a"),
+                                 "temp": round(max(x["main"]["temp_max"] for x in its)),
+                                 "lo": round(min(x["main"]["temp_min"] for x in its)),
+                                 "rain": round(rain, 1),
+                                 "icon": _owm_icon(pick["weather"][0]["icon"]),
+                                 "desc": pick["weather"][0]["main"]})
             data = {"city":raw.get("name",city),"country":raw["sys"].get("country",""),
                     "temperature":round(raw["main"]["temp"]),"feels_like":round(raw["main"]["feels_like"]),
                     "temp_min":round(raw["main"]["temp_min"]),"temp_max":round(raw["main"]["temp_max"]),
@@ -738,7 +746,7 @@ def _mock_weather(city="Chittagong"):
     t    = 27+seed%8
     days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
     ic   = ["cloud-sun","sun","cloud","cloud-rain","sun","sun","cloud-sun"]
-    forecast = [{"day":days[i],"temp":t+(i%3)-1,"icon":ic[i],"desc":cond} for i in range(7)]
+    forecast = [{"day":days[i],"temp":t+(i%3)-1,"icon":ic[i],"desc":cond,"lo":t-5,"rain":0} for i in range(5)]
     data = {"city":city,"country":"BD","temperature":t,"feels_like":t+2,"temp_min":t-2,"temp_max":t+4,
             "humidity":62+seed%20,"wind_speed":10+seed%14,"condition":cond,
             "description":"Good conditions for farming today.","icon":imap[cond],
@@ -2125,8 +2133,10 @@ def report_page():
         f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
             WHERE e.user_id={ph} ORDER BY e.date DESC LIMIT 50""", (uid,)
     ).fetchall()
-    total_income  = sum(r["amount"] for r in expenses if r["type"] == "income")
-    total_expense = sum(r["amount"] for r in expenses if r["type"] == "expense")
+    # Totals must cover ALL entries - the list above is only the latest 50 rows.
+    tot = {r["type"]: float(r["s"] or 0) for r in conn.execute(
+        f"SELECT type, SUM(amount) AS s FROM expense_log WHERE user_id={ph} GROUP BY type", (uid,)).fetchall()}
+    total_income, total_expense = tot.get("income", 0.0), tot.get("expense", 0.0)
     profit = total_income - total_expense
 
     user = current_user()
@@ -2136,7 +2146,7 @@ def report_page():
         user=user, farms=farms, growth=growth,
         irrigations=irrigations, expenses=expenses,
         total_income=total_income, total_expense=total_expense,
-        profit=profit, today=today)
+        profit=profit, today=today, fin=finance_summary(uid))
 
 
 # ══════════════════════════════════════════════════════════════════
