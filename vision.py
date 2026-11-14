@@ -70,10 +70,13 @@ SCHEMA_HELP = """{
 }"""
 
 
-def build_prompt(crop, notes, lang):
+def build_prompt(crop, notes, lang, variant="main"):
     language = ("Bengali (Bangla, simple everyday words a farmer in Bangladesh understands; "
                 "keep scientific names and chemical names in English in brackets)"
                 if lang == "bn" else "English (clear, simple wording)")
+    VERIFY = ("This is an independent SECOND OPINION. Do not assume the obvious answer. First list what is visible, "
+              "then argue against your own first guess and check the field guide before concluding.\n\n"
+              if variant == "verify" else "")
     return f"""You are an expert plant pathologist and agronomist advising a smallholder farmer in Bangladesh.
 Analyse the attached photograph of a plant.
 
@@ -84,13 +87,23 @@ Context from the farmer:
 Rules (very important):
 1. Base every statement ONLY on what is actually visible in the photo plus the context above. Never invent symptoms.
 2. If the photo does not clearly show a plant (or is too blurry/dark/far to judge), set is_plant or image_quality accordingly, set health_status to "unclear", and explain how to retake it. Do NOT guess a disease.
-3. If the plant looks healthy, say so (health_status "healthy", severity "None"). Do not manufacture a problem.
-4. Confidence must be calibrated: many diseases look alike from one photo, so use 85+ only when the signs are classic and unmistakable. List realistic alternatives in other_possibilities.
+3. Call the plant "healthy" ONLY after checking the whole leaf for small spots, lesions, rings, yellow halos, mottling, curling, pustules or mould. Early or tiny symptoms are common; if you see any abnormal mark, do not say healthy. If the plant truly looks normal, say so (health_status "healthy", severity "None") and do not manufacture a problem.
+4. Confidence must be calibrated and humble: many diseases look alike from one photo and past tests show these models are often over-confident. Use 80+ only when the signs are classic and unmistakable; use 50-70 for most cases. Fill "visible_evidence" first (what you literally see), then decide the diagnosis from it, and list realistic alternatives in other_possibilities.
+4b. Field guide to tell look-alikes apart (use only if the matching signs are really visible):
+   - Early blight: brown spots with concentric "target" rings, usually older leaves, yellow halo.
+   - Late blight: large, irregular, water-soaked / greasy grey-green to brown patches that spread fast; white fuzzy growth underneath in humid weather.
+   - Septoria leaf spot: MANY small (2-3 mm) round spots with dark brown borders and pale grey centres, no big rings.
+   - Bacterial spot: small dark, angular or water-soaked spots, often with a yellow halo, slightly raised/scabby.
+   - Leaf mould (tomato): pale green-yellow patches on the UPPER surface with olive-grey velvety mould on the underside.
+   - Mosaic virus: light/dark green mottling, distorted narrow or fern-like leaves, no distinct spots.
+   - Yellow leaf curl virus: leaves curl upward, yellow edges, small leaves, stunted plant.
+   - Corn common rust: small orange-brown raised pustules on both leaf sides; Northern leaf blight: long (5-15 cm) cigar-shaped grey-green to tan lesions; Grey leaf spot: narrow rectangular grey lesions between veins.
+   - Nutrient deficiency is uniform yellowing/purpling in a pattern (older vs newer leaves), without spots or mould; do not use it as a guess when spots or mould are visible.
 5. Treatment advice must be practical and safe: prefer cultural and organic steps first, then generic chemical active ingredients with "follow label dose and pre-harvest interval". No made-up doses. Mention removing/isolating infected plant parts where relevant.
 6. Set needs_expert true whenever confidence is below 60, the image is poor, or the problem is severe or spreading fast; the farmer can then contact the local Sub-Assistant Agriculture Officer (DAE) or call the Krishi Call Center 16123.
 7. Write all text values in {language}.
 
-Reply with ONLY one JSON object, no markdown, exactly this shape:
+{VERIFY}Reply with ONLY one JSON object, no markdown, exactly this shape:
 {SCHEMA_HELP}"""
 
 
@@ -295,26 +308,41 @@ def combine(a, b):
     """Cross-check two independent model answers and turn their (self-reported) confidences into one
     conservative figure. Agreement raises trust; disagreement lowers it and asks for an expert."""
     if b is None:
-        a["confidence"] = min(a["confidence"], 80)
+        a["confidence"] = min(a["confidence"], 70 if a["health_status"] == "healthy" else 65)
         a["verification"] = {"checks": 1, "agreement": "single"}
         return a
     both_healthy = a["health_status"] == "healthy" and b["health_status"] == "healthy"
     same_status = a["health_status"] == b["health_status"]
     if both_healthy or (same_status and _same_dx(a["primary_diagnosis"], b["primary_diagnosis"])):
         level = "agree"
-        a["confidence"] = min(a["confidence"], b["confidence"], 92)
+        a["confidence"] = min(a["confidence"], b["confidence"], 85 if both_healthy else 75)
     elif _listed(b["primary_diagnosis"], a) or _listed(a["primary_diagnosis"], b):
         level = "partial"
-        a["confidence"] = min(a["confidence"], b["confidence"], 70)
+        a["confidence"] = min(a["confidence"], b["confidence"], 60)
     else:
         level = "disagree"
-        a["confidence"] = min(a["confidence"], b["confidence"], 55)
+        a["confidence"] = min(a["confidence"], b["confidence"], 45)
         a["needs_expert"] = True
         if b["primary_diagnosis"] and not _listed(b["primary_diagnosis"], a):
             a["other_possibilities"] = (a["other_possibilities"] + [
-                {"name": b["primary_diagnosis"], "confidence": min(b["confidence"], 55)}])[:3]
+                {"name": b["primary_diagnosis"], "confidence": min(b["confidence"], 45)}])[:3]
     a["verification"] = {"checks": 2, "agreement": level}
     return a
+
+
+_HARD = re.compile(r"leaf mou?ld|bacterial|septoria|mosaic|curl|tylcv|blight|virus|deficien|unclear|stress|cercospora|alternaria|phytophthora", re.I)
+
+
+def add_caution(res, lang):
+    """Plain-language warning where our own test (67 labelled photos) showed the AI is often wrong."""
+    bn = lang == "bn"
+    if res["health_status"] == "healthy":
+        res["caution"] = ("একটি ছবিতে ছোট বা শুরুর দাগ ধরা না-ও পড়তে পারে। পাতার নিচের দিক ও পাশের গাছ দেখুন; দাগ, কোঁকড়ানো বা হলুদ ভাব থাকলে কাছ থেকে আবার ছবি তুলুন।"
+                          if bn else "One photo can miss early or tiny spots. Check the underside of leaves and nearby plants; if you see spots, curling or yellowing, retake a close-up photo.")
+    elif _HARD.search(res["primary_diagnosis"] or "") or res["health_status"] in ("nutrient_deficiency", "unclear"):
+        res["caution"] = ("এই ধরনের সমস্যা ছবি থেকে একে অপরের সাথে সহজে গুলিয়ে যায়। আমাদের পরীক্ষায় এমন ক্ষেত্রে AI অর্ধেকেরও কম বার সঠিক ছিল। চিকিৎসা শুরুর আগে কৃষি কর্মকর্তা বা কৃষি কল সেন্টার ১৬১২৩-এ নিশ্চিত হোন।"
+                          if bn else "Problems like this are easily confused with each other from a photo. In our own test the AI got such cases right less than half the time. Please confirm with your agriculture officer or Krishi Call Center 16123 before spraying.")
+    return res
 
 
 def analyze(image_bytes, crop="", notes="", lang="en"):
@@ -334,7 +362,8 @@ def analyze(image_bytes, crop="", notes="", lang="en"):
             second = next((m for m in GEMINI_MODELS[1:] if m), None)
             with ThreadPoolExecutor(max_workers=2) as ex:
                 fa = ex.submit(_call_gemini, b64, mime, prompt)
-                fb = ex.submit(_call_gemini, b64, mime, prompt, [second]) if second else None
+                vprompt = build_prompt(crop, notes[:600], lang, "verify")
+                fb = ex.submit(_call_gemini, b64, mime, vprompt, [second]) if second else None
                 text_a = fa.result()
                 result = clean(_extract_json(text_a))
                 other = None
@@ -351,4 +380,4 @@ def analyze(image_bytes, crop="", notes="", lang="en"):
     except requests.RequestException:
         raise VisionError("Could not reach the AI service. Check the connection and try again.")
     result["provider"] = prov
-    return result
+    return add_caution(result, lang)

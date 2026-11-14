@@ -297,17 +297,18 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     if(d.plant_identified){body.appendChild(el('p','fs-13 text-muted',T('Plant: ','গাছ: ')+d.plant_identified))}
     if(d.health_status!=='unclear'&&d.is_plant){
       const row=el('div');row.style.cssText='display:flex;justify-content:space-between;margin:6px 0';
-      const lvl=d.confidence>=80?T('High','উচ্চ'):d.confidence>=60?T('Medium','মাঝারি'):T('Low','কম');
+      const lvl=d.confidence>=70?T('High','উচ্চ'):d.confidence>=55?T('Medium','মাঝারি'):T('Low','কম');
       row.append(el('span','fs-13 text-muted',T('AI certainty (estimate)','AI-এর নিশ্চয়তা (অনুমান)')),el('span','fs-13 fw-600',lvl+' · '+d.confidence+'%'));
       const track=el('div');track.style.cssText='background:var(--border);border-radius:8px;height:10px;overflow:hidden;margin-bottom:8px';
-      const bar=el('div');bar.style.cssText='height:100%;border-radius:8px;background:'+(d.confidence>=75?'#2e7d32':d.confidence>=50?'#f9a825':'#c62828')+';width:'+d.confidence+'%';
+      const bar=el('div');bar.style.cssText='height:100%;border-radius:8px;background:'+(d.confidence>=70?'#2e7d32':d.confidence>=50?'#f9a825':'#c62828')+';width:'+d.confidence+'%';
       track.appendChild(bar);body.append(row,track);
       const v=d.verification||{};
       const vmsg={agree:['✅',T('Two independent AI checks agree on this diagnosis.','দুটি আলাদা AI যাচাই একই নির্ণয়ে একমত।')],
         partial:['🟡',T('Two AI checks partly agree — the problem is in the same family but not certain.','দুটি AI যাচাই আংশিক একমত — সমস্যাটি একই ধরনের, তবে নিশ্চিত নয়।')],
         disagree:['⚠️',T('Two AI checks gave different answers, so certainty is capped. Please confirm with an expert.','দুটি AI যাচাই ভিন্ন উত্তর দিয়েছে, তাই নিশ্চয়তা কমিয়ে দেখানো হয়েছে। বিশেষজ্ঞের সাথে নিশ্চিত হোন।')],
-        single:['ℹ️',T('Only one AI check was available this time, so certainty is capped at 80%.','এবার একটিমাত্র AI যাচাই পাওয়া গেছে, তাই নিশ্চয়তা সর্বোচ্চ ৮০% দেখানো হয়েছে।')]}[v.agreement];
+        single:['ℹ️',T('Only one AI check was available this time, so certainty is capped at 65%.','এবার একটিমাত্র AI যাচাই পাওয়া গেছে, তাই নিশ্চয়তা সর্বোচ্চ ৬৫% দেখানো হয়েছে।')]}[v.agreement];
       if(vmsg){const vp=el('p','fs-12 text-muted',vmsg[0]+' '+vmsg[1]);vp.style.margin='0 0 12px';body.appendChild(vp)}
+      if(d.caution){const cp=el('p','fs-12',(d.health_status==='healthy'?'🔎 ':'⚠️ ')+d.caution);cp.style.cssText='margin:0 0 12px;padding:8px 10px;border-radius:8px;background:rgba(249,168,37,.15)';body.appendChild(cp)}
       if(d.severity&&d.severity!=='None'){
         const sv={Low:T('Low','কম'),Medium:T('Medium','মাঝারি'),High:T('High','উচ্চ')}[d.severity];
         body.appendChild(el('p','fs-13',T('Severity: ','তীব্রতা: ')+sv));
