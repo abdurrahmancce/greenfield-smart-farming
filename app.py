@@ -34,7 +34,7 @@ MAIL_ENABLED  = bool(MAIL_SERVER and MAIL_USERNAME and MAIL_PASSWORD)
 APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024   # photo uploads (profile photo / disease photo)
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024   # photo uploads (profile photo / disease photo)
 app.secret_key = os.environ.get("SECRET_KEY", "gf_smartfarm_dev_secret_2024")
 
 # ── Google OAuth setup ─────────────────────────────────────────────
@@ -187,6 +187,7 @@ def migrate_db(conn):
         ("users", "avatar_photo", "TEXT DEFAULT ''"),
         ("users", "google_id",    "TEXT DEFAULT ''"),
         ("users", "account_id",   "TEXT"),
+        ("disease_scans", "photo_key", "TEXT DEFAULT ''"),
     ]
     for table, col, definition in new_cols:
         try:
@@ -337,6 +338,7 @@ def init_db():
             result_json   TEXT    NOT NULL,
             thumb         TEXT    DEFAULT '',
             lang          TEXT    DEFAULT 'en',
+            photo_key     TEXT    DEFAULT '',
             created_at    TEXT    DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS expense_log (
@@ -1939,10 +1941,11 @@ def api_disease_image():
     hits = [t for t in _vision_hits.get(uid, []) if now - t < VISION_WINDOW]
     if len(hits) >= VISION_LIMIT:
         return jsonify({"error": "You have reached the hourly photo-analysis limit. Please try again later."}), 429
-    f = request.files.get("image")
-    if not f:
+    files = [f for f in request.files.getlist("image") if f][:3]
+    if not files:
         return jsonify({"error": "Please choose or take a photo first."}), 400
-    data = f.read(vision.MAX_BYTES + 1)
+    data = [f.read(vision.MAX_BYTES + 1) for f in files]
+    photo_key = hashlib.sha256("".join(sorted(hashlib.sha256(d).hexdigest() for d in data)).encode()).hexdigest()
     crop = (request.form.get("crop_type") or "")[:40]
     notes = (request.form.get("notes") or "")[:600]
     lang = "bn" if session.get("lang") == "bn" else "en"
@@ -1958,11 +1961,11 @@ def api_disease_image():
         print("[vision]", repr(e))
         return jsonify({"error": "Something went wrong while analysing the photo."}), 500
     result["scan_id"] = _save_scan(uid, result, crop, request.form.get("farm_id"),
-                                   request.form.get("thumb", ""), lang)
+                                   request.form.get("thumb", ""), lang, photo_key)
     return jsonify(result)
 
 
-def _save_scan(uid, result, crop, farm_id, thumb, lang):
+def _save_scan(uid, result, crop, farm_id, thumb, lang, photo_key=""):
     """Keep every successful analysis (small thumbnail only, never the full photo). Never fails the request."""
     try:
         conn = get_db()
@@ -1975,12 +1978,21 @@ def _save_scan(uid, result, crop, farm_id, thumb, lang):
             fid = 0
         if not (isinstance(thumb, str) and thumb.startswith("data:image/jpeg;base64,") and len(thumb) < 90000):
             thumb = ""
+        # Same photo analysed again -> the newest result replaces the older one (keeps its farm link).
+        old = conn.execute(
+            "SELECT id, farm_id FROM disease_scans WHERE user_id=? AND ((?<>'' AND photo_key=?) OR (photo_key='' AND ?<>'' AND thumb=?))",
+            (uid, photo_key, photo_key, thumb, thumb)).fetchall()
+        if old:
+            if not fid:
+                fid = next((o["farm_id"] for o in old if o["farm_id"]), 0)
+            for o in old:
+                conn.execute("DELETE FROM disease_scans WHERE id=? AND user_id=?", (o["id"], uid))
         row = conn.execute(
-            """INSERT INTO disease_scans (user_id,farm_id,crop,diagnosis,health_status,confidence,severity,result_json,thumb,lang)
-               VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id""",
+            """INSERT INTO disease_scans (user_id,farm_id,crop,diagnosis,health_status,confidence,severity,result_json,thumb,lang,photo_key)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id""",
             (uid, fid, crop, result.get("primary_diagnosis", ""), result.get("health_status", ""),
              int(result.get("confidence", 0)), result.get("severity", ""), json.dumps(result, ensure_ascii=False),
-             thumb, lang)).fetchone()
+             thumb, lang, photo_key)).fetchone()
         conn.commit()
         sid = row[0] if row else None
         conn.close()
@@ -1994,6 +2006,18 @@ def _save_scan(uid, result, crop, farm_id, thumb, lang):
 @login_required
 def api_disease_history():
     conn = get_db()
+    # one-time tidy of older duplicates (same photo scanned several times): keep only the newest
+    seen = {}
+    for r in conn.execute("SELECT id, thumb, photo_key FROM disease_scans WHERE user_id=? ORDER BY id DESC",
+                          (session["user_id"],)).fetchall():
+        key = (r["photo_key"] or r["thumb"] or "")
+        if not key:
+            continue
+        if key in seen:
+            conn.execute("DELETE FROM disease_scans WHERE id=? AND user_id=?", (r["id"], session["user_id"]))
+        else:
+            seen[key] = r["id"]
+    conn.commit()
     rows = conn.execute(
         """SELECT d.id, d.crop, d.diagnosis, d.health_status, d.confidence, d.severity, d.thumb, d.created_at,
                   d.farm_id, f.farm_name

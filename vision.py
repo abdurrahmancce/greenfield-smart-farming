@@ -70,17 +70,19 @@ SCHEMA_HELP = """{
 }"""
 
 
-def build_prompt(crop, notes, lang, variant="main"):
+def build_prompt(crop, notes, lang, variant="main", n_images=1):
     language = ("Bengali (Bangla, simple everyday words a farmer in Bangladesh understands; "
                 "keep scientific names and chemical names in English in brackets)"
                 if lang == "bn" else "English (clear, simple wording)")
     VERIFY = ("This is an independent SECOND OPINION. Do not assume the obvious answer. First list what is visible, "
               "then argue against your own first guess and check the field guide before concluding.\n\n"
               if variant == "verify" else "")
+    MULTI = (f"You are given {n_images} photographs of the SAME plant problem (for example close-up of the symptom, underside of the leaf, whole plant). "
+             "Combine the evidence from all of them; if they disagree, say so and lower your confidence.\n\n" if n_images > 1 else "")
     return f"""You are an expert plant pathologist and agronomist advising a smallholder farmer in Bangladesh.
 Analyse the attached photograph of a plant.
 
-Context from the farmer:
+{MULTI}Context from the farmer:
 - Crop: {crop or 'not specified'}
 - Notes: {notes or 'none'}
 
@@ -111,13 +113,13 @@ class VisionError(Exception):
     pass
 
 
-def _call_gemini(img_b64, mime, prompt, models=None):
+def _call_gemini(imgs, prompt, models=None):
     """Try current Gemini models in order. Skips a model that is missing (404), rejects our options (400),
     is overloaded (5xx) or too slow (timeout) and moves on to the next, within an overall deadline."""
     global _good_model
     import time as _t
     base = {
-        "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime, "data": img_b64}}]}],
+        "contents": [{"parts": [{"text": prompt}] + [{"inline_data": {"mime_type": m, "data": b}} for m, b in imgs]}],
         "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }
     order = list(models) if models else ([_good_model] if _good_model else []) + [m for m in GEMINI_MODELS if m != _good_model]
@@ -166,15 +168,15 @@ def _call_gemini(img_b64, mime, prompt, models=None):
     raise VisionError(f"AI service error ({last}): no Gemini model answered.")
 
 
-def _call_anthropic(img_b64, mime, prompt):
+def _call_anthropic(imgs, prompt):
     r = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
                  "content-type": "application/json"},
         json={"model": ANTHROPIC_MODEL, "max_tokens": 1800, "temperature": 0.2,
               "messages": [{"role": "user", "content": [
-                  {"type": "image", "source": {"type": "base64", "media_type": mime, "data": img_b64}},
-                  {"type": "text", "text": prompt}]}]},
+                  {"type": "image", "source": {"type": "base64", "media_type": m, "data": b}} for m, b in imgs
+              ] + [{"type": "text", "text": prompt}]}]},
         timeout=TIMEOUT)
     if r.status_code == 429:
         raise VisionError("The AI service is busy right now. Please try again in a minute.")
@@ -346,24 +348,29 @@ def add_caution(res, lang):
 
 
 def analyze(image_bytes, crop="", notes="", lang="en"):
+    """image_bytes: one photo (bytes) or a list of up to 3 photos of the same problem."""
     prov = provider()
     if not prov:
         raise VisionError("NO_KEY")
-    if not image_bytes or len(image_bytes) > MAX_BYTES:
+    photos = list(image_bytes) if isinstance(image_bytes, (list, tuple)) else [image_bytes]
+    photos = [p for p in photos if p][:3]
+    if not photos or any(len(p) > MAX_BYTES for p in photos):
         raise VisionError("Image is too large (max 6 MB) or empty.")
-    mime = sniff_mime(image_bytes)
-    if mime not in ALLOWED_MIME:
-        raise VisionError("Unsupported image type. Please upload a JPG, PNG or WebP photo.")
-    b64 = base64.b64encode(image_bytes).decode()
-    prompt = build_prompt(crop, notes[:600], lang)
+    imgs = []
+    for p in photos:
+        mime = sniff_mime(p)
+        if mime not in ALLOWED_MIME:
+            raise VisionError("Unsupported image type. Please upload a JPG, PNG or WebP photo.")
+        imgs.append((mime, base64.b64encode(p).decode()))
+    prompt = build_prompt(crop, notes[:600], lang, "main", len(imgs))
     try:
         if prov == "gemini":
             from concurrent.futures import ThreadPoolExecutor
             second = next((m for m in GEMINI_MODELS[1:] if m), None)
             with ThreadPoolExecutor(max_workers=2) as ex:
-                fa = ex.submit(_call_gemini, b64, mime, prompt)
-                vprompt = build_prompt(crop, notes[:600], lang, "verify")
-                fb = ex.submit(_call_gemini, b64, mime, vprompt, [second]) if second else None
+                fa = ex.submit(_call_gemini, imgs, prompt)
+                vprompt = build_prompt(crop, notes[:600], lang, "verify", len(imgs))
+                fb = ex.submit(_call_gemini, imgs, vprompt, [second]) if second else None
                 text_a = fa.result()
                 result = clean(_extract_json(text_a))
                 other = None
@@ -374,10 +381,11 @@ def analyze(image_bytes, crop="", notes="", lang="en"):
                         print("[vision] second check failed:", repr(e))
             result = combine(result, other)
         else:
-            result = combine(clean(_extract_json(_call_anthropic(b64, mime, prompt))), None)
+            result = combine(clean(_extract_json(_call_anthropic(imgs, prompt))), None)
     except requests.Timeout:
         raise VisionError("The AI took too long to answer. Please try again.")
     except requests.RequestException:
         raise VisionError("Could not reach the AI service. Check the connection and try again.")
     result["provider"] = prov
+    result["photos"] = len(imgs)
     return add_caution(result, lang)

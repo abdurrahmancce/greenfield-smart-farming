@@ -10,17 +10,24 @@
       <div class="card-body">
         <p class="text-muted fs-12" style="margin-bottom:12px">Take or upload a clear photo of the affected leaf, stem, fruit or whole plant. Optional — you can also use the symptom checker below.</p>
         <input type="file" id="photoCamera" accept="image/*" capture="environment" hidden>
-        <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp" hidden>
+        <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp" multiple hidden>
         <div class="photo-actions">
           <button type="button" class="btn btn-outline" id="btnCamera"><i class="fas fa-camera"></i> Take Photo</button>
           <button type="button" class="btn btn-outline" id="btnUpload"><i class="fas fa-image"></i> Upload Photo</button>
         </div>
         <div id="photoPreviewWrap" style="display:none;margin-top:14px">
-          <div style="position:relative">
-            <img id="photoPreview" alt="Selected plant photo" style="width:100%;max-height:300px;object-fit:contain;border-radius:12px;background:var(--bg-secondary);border:1px solid var(--border)">
-            <button type="button" id="photoClear" aria-label="Remove photo" style="position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer"><i class="fas fa-times"></i></button>
-          </div>
-          <button type="button" class="btn btn-primary" id="analyzePhotoBtn" style="width:100%;margin-top:12px"><i class="fas fa-microscope"></i> Analyze Photo</button>
+          <div id="photoGrid" class="photo-grid"></div>
+          <p class="text-muted fs-12" id="photoHint" style="margin:8px 0 0"></p>
+          <button type="button" class="btn btn-primary" id="analyzePhotoBtn" style="width:100%;margin-top:12px"><i class="fas fa-microscope"></i> <span id="analyzeLabel">Analyze Photo</span></button>
+        </div>
+        <div class="shoot-guide">
+          <h4>📸 How to take a good photo</h4>
+          <ol>
+            <li><b>Close-up</b> of the affected leaf, upper side</li>
+            <li><b>Underside</b> of the same leaf (mould, pests, spores hide here)</li>
+            <li><b>Whole plant</b> from a little distance (optional)</li>
+          </ol>
+          <p>You can add up to 3 photos of the same problem — more angles give a better answer.</p>
         </div>
         <ul class="photo-tips">
           <li>Fill the frame with the affected part, in daylight</li>
@@ -152,6 +159,27 @@
 .chip:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 .photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .photo-actions .btn{justify-content:center}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.photo-cell{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--bg-secondary)}
+.photo-cell img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-cell button{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;cursor:pointer;font-size:12px}
+.photo-cell span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 7px;border-radius:10px}
+.shoot-guide{margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(46,125,50,.1);border:1px solid rgba(46,125,50,.3)}
+.shoot-guide h4{margin:0 0 6px;font-size:13.5px;color:var(--text-primary)}
+.shoot-guide ol{margin:0 0 6px;padding-left:20px;font-size:12.5px;line-height:1.7;color:var(--text-primary)}
+.shoot-guide p{margin:0;font-size:12px;color:var(--text-secondary)}
+.share-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.share-row .btn{flex:1;min-width:130px;justify-content:center}
+.print-only{display:none}
+@media print{
+  body *{visibility:hidden}
+  #photoResult,#photoResult *{visibility:visible}
+  #photoResult{position:absolute;left:0;top:0;width:100%;display:block!important}
+  #photoResult .card,#photoResult .pr-sec{background:#fff!important;color:#000!important;box-shadow:none!important;border-color:#bbb!important}
+  #photoResult *{color:#000!important}
+  #photoResult .no-print,#photoResult button,#photoResult select{display:none!important}
+  #photoResult .print-only{display:block!important}
+}
 .photo-tips{margin:14px 0 0;padding-left:18px;color:var(--text-secondary);font-size:12.5px;line-height:1.7}
 .pr-sec{margin-top:14px;border-radius:10px;padding:14px 16px;border:1px solid var(--border);background:var(--bg-secondary)}
 .pr-sec h4{margin:0 0 8px;font-size:14px;color:var(--text-primary)}
@@ -217,14 +245,27 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
   const T=(en,bn)=>BN?bn:en;
   const $=id=>document.getElementById(id);
   const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
-  let photoBlob=null,photoThumb='';
+  const MAX_PHOTOS=3;
+  let photos=[];            // [{blob,thumb,url}]
   const cam=$('photoCamera'),file=$('photoFile');
   $('btnCamera').onclick=()=>cam.click();
   $('btnUpload').onclick=()=>file.click();
-  $('photoClear').onclick=clearPhoto;
-  cam.onchange=()=>pick(cam.files[0]);file.onchange=()=>pick(file.files[0]);
+  cam.onchange=()=>{[...cam.files].forEach(pick);cam.value=''};file.onchange=()=>{[...file.files].forEach(pick);file.value=''};
 
-  function clearPhoto(){photoBlob=null;photoThumb='';cam.value='';file.value='';$('photoPreviewWrap').style.display='none';$('photoResult').style.display='none';}
+  function clearPhoto(){photos.forEach(p=>URL.revokeObjectURL(p.url));photos=[];cam.value='';file.value='';drawPhotos();$('photoResult').style.display='none';}
+  const LABELS=[T('Close-up','কাছ থেকে'),T('Underside','নিচের দিক'),T('Whole plant','পুরো গাছ')];
+  function drawPhotos(){
+    const g=$('photoGrid');g.innerHTML='';
+    $('photoPreviewWrap').style.display=photos.length?'block':'none';
+    photos.forEach((p,i)=>{
+      const c=el('div','photo-cell'),im=el('img');im.src=p.url;im.alt='';
+      const x=el('button');x.type='button';x.innerHTML='<i class="fas fa-times"></i>';x.setAttribute('aria-label',T('Remove photo','ছবি সরান'));
+      x.onclick=()=>{const k=photos.indexOf(p);if(k<0)return;URL.revokeObjectURL(p.url);photos.splice(k,1);drawPhotos()};
+      c.append(im,x,el('span',null,(i+1)+'. '+LABELS[i]));g.appendChild(c);
+    });
+    $('analyzeLabel').textContent=photos.length>1?T('Analyze '+photos.length+' photos','বিশ্লেষণ করুন ('+photos.length+'টি ছবি)'):T('Analyze Photo','ছবি বিশ্লেষণ করুন');
+    $('photoHint').textContent=photos.length<MAX_PHOTOS?T('Tip: add another angle (e.g. underside of the leaf) for a better result. Up to '+MAX_PHOTOS+' photos.','টিপ: আরেকটি দিক (যেমন পাতার নিচের দিক) যোগ করলে ফল ভালো হয়। সর্বোচ্চ '+MAX_PHOTOS+'টি ছবি।'):T('Maximum '+MAX_PHOTOS+' photos added.','সর্বোচ্চ '+MAX_PHOTOS+'টি ছবি যোগ করা হয়েছে।');
+  }
   function shrink(img,max,q,cb){
     const r=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');
     c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);
@@ -233,13 +274,12 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
   // Shrink big phone photos in the browser (faster upload, same diagnosis quality) + a tiny thumbnail for history
   function pick(f){
     if(!f)return;
+    if(photos.length>=MAX_PHOTOS){alert(T('You can add up to '+MAX_PHOTOS+' photos.','সর্বোচ্চ '+MAX_PHOTOS+'টি ছবি যোগ করা যাবে।'));return}
     if(!/^image\//.test(f.type)){alert(T('Please choose an image file.','অনুগ্রহ করে একটি ছবি বেছে নিন।'));return}
     const img=new Image(),url=URL.createObjectURL(f);
     img.onload=()=>{
-      const c=shrink(img,1280);
-      photoThumb=shrink(img,200).toDataURL('image/jpeg',0.6);
-      c.toBlob(b=>{photoBlob=b;$('photoPreview').src=URL.createObjectURL(b);$('photoPreviewWrap').style.display='block';
-        $('photoResult').style.display='none';},'image/jpeg',0.85);
+      const c=shrink(img,1280),thumb=shrink(img,200).toDataURL('image/jpeg',0.6);
+      c.toBlob(b=>{if(photos.length<MAX_PHOTOS){photos.push({blob:b,thumb,url:URL.createObjectURL(b)});drawPhotos();$('photoResult').style.display='none'}},'image/jpeg',0.85);
       URL.revokeObjectURL(url);
     };
     img.onerror=()=>{alert(T('This image could not be read. Try another photo.','ছবিটি পড়া যায়নি। অন্য একটি ছবি দিন।'));URL.revokeObjectURL(url)};
@@ -282,6 +322,32 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     row.append(b1,b2);wrap.append(sel,row);return wrap;
   }
 
+  function shareText(d,title){
+    const L=[];
+    L.push('GreenField — '+T('Crop Disease Report','ফসলের রোগ নির্ণয় রিপোর্ট'));
+    L.push(title+(d.confidence&&d.health_status!=='unclear'?' ('+T('AI certainty ~','AI নিশ্চয়তা ~')+d.confidence+'%)':''));
+    if(d.plant_identified)L.push(T('Plant: ','গাছ: ')+d.plant_identified);
+    if(d.summary)L.push(d.summary);
+    const add=(h,a)=>{if(a&&a.length){L.push('');L.push(h);a.forEach(x=>L.push('- '+x))}};
+    add(T('What the AI saw:','যা দেখা গেছে:'),d.visible_evidence);
+    add(T('Do first:','প্রথমে করণীয়:'),d.treatment&&d.treatment.immediate_steps);
+    add(T('Organic options:','জৈব উপায়:'),d.treatment&&d.treatment.organic_options);
+    add(T('Chemical options (follow label):','রাসায়নিক (লেবেল মেনে):'),d.treatment&&d.treatment.chemical_options);
+    L.push('');L.push(T('AI estimate, not a lab test. Please confirm with your agriculture officer (Krishi Call Center 16123).','AI-এর অনুমান, ল্যাব পরীক্ষা নয়। কৃষি কর্মকর্তার সাথে নিশ্চিত হোন (কৃষি কল সেন্টার ১৬১২৩)।'));
+    return L.join('\n');
+  }
+  function shareRow(d,title){
+    const row=el('div','share-row no-print');
+    const txt=shareText(d,title);
+    if(navigator.share){
+      const b=el('button','btn btn-outline','📤 '+T('Share','শেয়ার'));b.type='button';
+      b.onclick=()=>navigator.share({title:'GreenField',text:txt}).catch(()=>{});row.appendChild(b);
+    }
+    const c=el('button','btn btn-outline','📋 '+T('Copy text','লেখা কপি'));c.type='button';
+    c.onclick=async()=>{try{await navigator.clipboard.writeText(txt);c.textContent='✓ '+T('Copied','কপি হয়েছে')}catch(e){prompt(T('Copy this text:','এই লেখা কপি করুন:'),txt)}};
+    const pr=el('button','btn btn-outline','🖨️ '+T('Print / Save as PDF','প্রিন্ট / PDF সংরক্ষণ'));pr.type='button';pr.onclick=()=>window.print();
+    row.append(c,pr);return row;
+  }
   function render(d){
     const box=$('photoResult');box.innerHTML='';box.style.display='block';
     $('emptyState').style.display='none';$('resultCard').style.display='none';$('loadingState').style.display='none';
@@ -294,6 +360,7 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     head.appendChild(el('h2',null,status[0]+' '+title));
     head.appendChild(el('span','badge '+status[2],status[1]));card.appendChild(head);
 
+    const ph=el('p','print-only','GreenField · '+T('Crop Disease Report','ফসলের রোগ নির্ণয় রিপোর্ট')+' · '+new Date().toLocaleDateString(BN?'bn-BD':'en-GB'));ph.style.cssText='font-weight:600;margin:0 0 8px';body.appendChild(ph);
     if(d.plant_identified){body.appendChild(el('p','fs-13 text-muted',T('Plant: ','গাছ: ')+d.plant_identified))}
     if(d.health_status!=='unclear'&&d.is_plant){
       const row=el('div');row.style.cssText='display:flex;justify-content:space-between;margin:6px 0';
@@ -331,7 +398,8 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
         [T('Show this to your local Sub-Assistant Agriculture Officer (DAE) or call the Krishi Call Center: 16123.','আপনার এলাকার উপসহকারী কৃষি কর্মকর্তা (DAE)-কে দেখান অথবা কৃষি কল সেন্টারে ফোন করুন: ১৬১২৩।')],'pr-warn'));
     }
     const act=actions(d);if(act)body.appendChild(act);
-    const note=el('p','fs-12 text-muted',T('AI-generated from a single photo, where possible cross-checked by a second AI model. The % is the AI\'s own estimate, not a lab test, and it can be wrong because many plant problems look alike. Use it as guidance, not a final verdict. Always follow pesticide label instructions.','একটি ছবি থেকে AI তৈরি করেছে এবং সম্ভব হলে দ্বিতীয় একটি AI মডেল যাচাই করেছে। শতাংশটি AI-এর নিজের অনুমান, ল্যাবরেটরি পরীক্ষা নয়, আর অনেক গাছের সমস্যা দেখতে একই রকম হওয়ায় ভুল হতে পারে। এটিকে পরামর্শ হিসেবে নিন, চূড়ান্ত সিদ্ধান্ত নয়। কীটনাশকের লেবেলের নির্দেশনা সবসময় মেনে চলুন।'));
+    body.appendChild(shareRow(d,title));
+    const note=el('p','fs-12 text-muted',T('AI-generated from the photo(s), where possible cross-checked by a second AI model. The % is the AI\'s own estimate, not a lab test, and it can be wrong because many plant problems look alike. Use it as guidance, not a final verdict. Always follow pesticide label instructions.','ছবি থেকে AI তৈরি করেছে এবং সম্ভব হলে দ্বিতীয় একটি AI মডেল যাচাই করেছে। শতাংশটি AI-এর নিজের অনুমান, ল্যাবরেটরি পরীক্ষা নয়, আর অনেক গাছের সমস্যা দেখতে একই রকম হওয়ায় ভুল হতে পারে। এটিকে পরামর্শ হিসেবে নিন, চূড়ান্ত সিদ্ধান্ত নয়। কীটনাশকের লেবেলের নির্দেশনা সবসময় মেনে চলুন।'));
     note.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--border)';body.appendChild(note);
     card.appendChild(body);box.appendChild(card);
     box.scrollIntoView({behavior:'smooth',block:'start'});
@@ -389,8 +457,8 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     }catch(e){}
   }
 
-  async function sendOne(blob,crop,notes,farm,thumb){
-    const fd=new FormData();fd.append('image',blob,'plant.jpg');fd.append('crop_type',crop||'');fd.append('notes',notes||'');
+  async function sendOne(blobs,crop,notes,farm,thumb){
+    const fd=new FormData();(Array.isArray(blobs)?blobs:[blobs]).forEach((b,i)=>fd.append('image',b,'plant'+(i+1)+'.jpg'));fd.append('crop_type',crop||'');fd.append('notes',notes||'');
     fd.append('farm_id',farm||'');fd.append('thumb',thumb||'');
     const res=await fetch('/api/disease-image',{method:'POST',body:fd});
     const data=await res.json().catch(()=>({error:(res.status===502||res.status===503||res.status===504)?T('The server is busy or waking up (code '+res.status+'). Wait 30 seconds and try again.','সার্ভার ব্যস্ত বা জেগে উঠছে (কোড '+res.status+')। ৩০ সেকেন্ড পর আবার চেষ্টা করুন।'):T('Unexpected server reply (code '+res.status+').','সার্ভার থেকে অপ্রত্যাশিত উত্তর (কোড '+res.status+')।')}));
@@ -404,7 +472,7 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     processing=true;let done=0,last=null;
     for(const it of items){
       try{
-        const r=await sendOne(it.blob,it.crop,it.notes,it.farm,it.thumb);
+        const r=await sendOne(it.blobs||[it.blob],it.crop,it.notes,it.farm,it.thumb);
         if(r.ok){await qDel(it.id);done++;last=r.data}
         else if(r.status>=400&&r.status<500&&r.status!==429){await qDel(it.id)}   // unusable photo: drop it
         else break;                                                              // server busy: retry later
@@ -419,11 +487,11 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
 
   /* ---- analyze button ---- */
   $('analyzePhotoBtn').onclick=async function(){
-    if(!photoBlob)return;
+    if(!photos.length)return;
     const btn=this;btn.disabled=true;
     const crop=$('cropType').value,notes=($('symptoms').value+' '+$('additionalInfo').value).trim(),farm=$('farmLink')?$('farmLink').value:'';
     const queueIt=async()=>{
-      try{await qAdd({blob:photoBlob,crop,notes,farm,thumb:photoThumb,created:Date.now()});
+      try{await qAdd({blobs:photos.map(p=>p.blob),crop,notes,farm,thumb:photos[0].thumb,created:Date.now()});
         $('loadingState').style.display='none';$('emptyState').style.display='block';
         await renderPending();clearPhoto();
         alert(T('You are offline. The photo is saved on this device and will be analysed automatically when the internet returns.','আপনি অফলাইনে আছেন। ছবিটি এই ডিভাইসে সংরক্ষিত হয়েছে, ইন্টারনেট ফিরলে নিজে থেকেই বিশ্লেষণ হবে।'));
@@ -432,9 +500,9 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     if(!navigator.onLine){await queueIt();btn.disabled=false;return}
     $('emptyState').style.display='none';$('resultCard').style.display='none';$('photoResult').style.display='none';
     $('loadingState').style.display='block';
-    $('loadingState').querySelector('h3').textContent=T('Analyzing your photo…','আপনার ছবি বিশ্লেষণ করা হচ্ছে…');
+    $('loadingState').querySelector('h3').textContent=T('Analyzing your photo(s)…','আপনার ছবি বিশ্লেষণ করা হচ্ছে…');
     try{
-      const r=await sendOne(photoBlob,crop,notes,farm,photoThumb);
+      const r=await sendOne(photos.map(p=>p.blob),crop,notes,farm,photos[0].thumb);
       $('loadingState').style.display='none';
       if(!r.ok){
         $('emptyState').style.display='block';
