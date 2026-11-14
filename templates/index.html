@@ -42,7 +42,7 @@
 
 <!-- ── NAVBAR ─────────────────────────────────────────────────── -->
 <nav class="home-nav">
-  <div class="home-brand"><i class="fas fa-seedling"></i> GreenField</div>
+  <a class="home-brand" href="{{ url_for('dashboard') if session.get('user_id') else url_for('index') }}" style="text-decoration:none;color:inherit" title="{{ 'Go to Dashboard' if session.get('user_id') else 'GreenField Home' }}"><i class="fas fa-seedling"></i> GreenField</a>
   <div class="home-nav-links">
     <a href="#features">Features</a>
     <a href="#how">How it works</a>
@@ -110,9 +110,6 @@
           <i class="fas fa-sign-in-alt"></i> Sign In
         </a>
       {% endif %}
-      <button id="installAppBtnHome" type="button" class="btn-hs" style="display:none">
-        <i class="fas fa-download"></i> Install App
-      </button>
     </div>
     <div class="hero-stats">
       <div class="hstat"><h3>6</h3><p>Smart Modules</p></div>
@@ -221,41 +218,6 @@
 
 <!-- inject current_user for Jinja (uses app context_processor) -->
 <script src="{{ url_for('static',filename='js/app.js') }}"></script>
-<script>
-// PWA Service Worker registration
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/static/sw.js")
-    .then(() => console.log("GreenField SW registered ✅"))
-    .catch(e => console.log("SW error:", e));
-}
-
-// Install prompt — same pattern as base.html
-let deferredInstallPrompt = null;
-const installBtnHome = document.getElementById('installAppBtnHome');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  if (installBtnHome) installBtnHome.style.display = 'inline-flex';
-});
-
-if (installBtnHome) {
-  installBtnHome.addEventListener('click', async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    installBtnHome.style.display = 'none';
-  });
-}
-
-window.addEventListener('appinstalled', () => {
-  if (installBtnHome) installBtnHome.style.display = 'none';
-});
-
-if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-  if (installBtnHome) installBtnHome.style.display = 'none';
-}
-</script>
+<script src="{{ url_for('static',filename='js/pwa-install.js') }}" defer></script>
 </body>
 </html>

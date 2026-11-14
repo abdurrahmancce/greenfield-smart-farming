@@ -348,7 +348,7 @@
 <div class="app-shell">
   <!-- ═══ SIDEBAR ═══════════════════════════════════════════ -->
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand" style="display:flex;align-items:center;gap:13px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <a class="sidebar-brand" href="{{ url_for('dashboard') }}" title="{{ 'ড্যাশবোর্ডে যান' if is_bn else 'Go to Dashboard' }}" aria-label="GreenField — {{ 'ড্যাশবোর্ড' if is_bn else 'Dashboard' }}" style="display:flex;align-items:center;gap:13px;border-bottom:1px solid rgba(255,255,255,.07);text-decoration:none;color:inherit;cursor:pointer">
       <div class="brand-logo" style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">
         <i class="fas fa-seedling" style="color:#fff"></i>
       </div>
@@ -356,7 +356,7 @@
         <h2 style="font-size:15.5px;font-weight:900;color:#fff;letter-spacing:-.4px">GreenField</h2>
         <span style="font-size:11px;opacity:.45;color:#fff;font-weight:400">Smart Farming Platform</span>
       </div>
-    </div>
+    </a>
 
     <nav class="sidebar-nav" style="padding:12px 10px;flex:1">
       <div class="nav-section">{{ 'প্রধান' if is_bn else 'Main' }}</div>
@@ -412,11 +412,6 @@
       <a class="nav-link" href="{{ url_for('logout') }}" style="color:#FF7F7F;opacity:.8"><i class="fas fa-sign-out-alt" style="color:#FF7F7F"></i> Logout</a>
       {% endif %}
 
-      <button id="installAppBtn" class="nav-link" type="button"
-              style="display:none;width:100%;background:none;border:none;text-align:left;
-                     font-family:inherit;cursor:pointer;color:#4ade80;font-weight:700;margin-top:4px">
-        <i class="fas fa-download"></i> Install App
-      </button>
     </nav>
 
     {% if current_user %}
@@ -683,26 +678,7 @@ try { localStorage.setItem("gf_lang", "{{ 'bn' if is_bn else 'en' }}"); } catch 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') warm(); });
 })();
 
-let deferredInstallPrompt = null;
-const installBtn = document.getElementById('installAppBtn');
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault(); deferredInstallPrompt = e;
-  if (installBtn) installBtn.style.display = 'flex';
-});
-if (installBtn) {
-  installBtn.addEventListener('click', async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null; installBtn.style.display = 'none';
-  });
-}
-window.addEventListener('appinstalled', () => {
-  if (installBtn) installBtn.style.display = 'none'; deferredInstallPrompt = null;
-});
-if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-  if (installBtn) installBtn.style.display = 'none';
-}
 </script>
+<script src="{{ url_for('static',filename='js/pwa-install.js') }}" defer></script>
 </body>
 </html>

@@ -46,6 +46,12 @@
     .google-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:11px 16px;background:#fff;color:#3c4043;border:1.5px solid #dadce0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
     .google-btn:hover{background:#f8f9fa;border-color:#c6c6c6;box-shadow:0 2px 8px rgba(0,0,0,.12);color:#3c4043}
   </style>
+  <link rel="manifest" href="/static/manifest.json"/>
+  <meta name="theme-color" content="#2E7D32"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
 </head>
 <body>
 
@@ -155,5 +161,6 @@ document.querySelector('form').addEventListener('submit', function() {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing in…';
 });
 </script>
+<script src="{{ url_for('static',filename='js/pwa-install.js') }}" defer></script>
 </body>
 </html>

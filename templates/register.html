@@ -58,6 +58,12 @@
     .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3)}
     .dot.active{background:#fff;width:22px;border-radius:99px}
   </style>
+  <link rel="manifest" href="/static/manifest.json"/>
+  <meta name="theme-color" content="#2E7D32"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
 </head>
 <body>
 
@@ -223,5 +229,6 @@ document.getElementById('regForm').addEventListener('submit', function(e) {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating account…';
 });
 </script>
+<script src="{{ url_for('static',filename='js/pwa-install.js') }}" defer></script>
 </body>
 </html>
