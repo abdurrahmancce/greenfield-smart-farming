@@ -1926,7 +1926,19 @@ def _fetch_dam_prices():
         import urllib.request, re
         url = "https://www.dam.gov.bd/price-of-agricultural-commodity/daily-commodity-price"
         req = urllib.request.Request(url, headers={"User-Agent": "GreenField-FarmApp/1.0"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        try:
+            resp = urllib.request.urlopen(req, timeout=8)
+        except Exception as e:
+            # dam.gov.bd serves an incomplete certificate chain (missing intermediate), so Python's strict
+            # check fails although browsers accept it. This is a public, read-only price page and no
+            # credentials are sent, so retry without verification for THIS host only - and say so in the log.
+            import ssl
+            if "CERTIFICATE_VERIFY_FAILED" not in repr(e):
+                raise
+            print("[market] DAM certificate chain incomplete - retrying without verification (public data only)")
+            ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+            resp = urllib.request.urlopen(req, timeout=8, context=ctx)
+        with resp:
             status = getattr(resp, "status", "?")
             html = resp.read().decode("utf-8", errors="ignore")
         print(f"[market] DAM fetched: HTTP {status}, {len(html)} bytes, {len(re.findall(r'<tr', html, re.I))} table rows")
@@ -1967,6 +1979,8 @@ def _fetch_dam_prices():
             if dam_name in scraped and our_key in _MARKET_FALLBACK:
                 fb = _MARKET_FALLBACK[our_key]
                 new_price = int(scraped[dam_name])
+                if not (0 < new_price < 2000):      # ignore obviously wrong numbers
+                    continue
                 old_price = fb["price"]
                 if new_price > old_price * 1.03:   trend = "up"
                 elif new_price < old_price * 0.97: trend = "down"
