@@ -1927,7 +1927,9 @@ def _fetch_dam_prices():
         url = "https://www.dam.gov.bd/price-of-agricultural-commodity/daily-commodity-price"
         req = urllib.request.Request(url, headers={"User-Agent": "GreenField-FarmApp/1.0"})
         with urllib.request.urlopen(req, timeout=8) as resp:
+            status = getattr(resp, "status", "?")
             html = resp.read().decode("utf-8", errors="ignore")
+        print(f"[market] DAM fetched: HTTP {status}, {len(html)} bytes, {len(re.findall(r'<tr', html, re.I))} table rows")
 
         # DAM page has a table: commodity | unit | price
         # Parse <tr> rows with Bengali/English crop names
@@ -1976,8 +1978,13 @@ def _fetch_dam_prices():
                     "tip": fb["tip"],
                 }
 
+        print(f"[market] parsed {len(scraped)} rows, matched {len(result)} known crops"
+              + ("" if len(result) >= 5 else " (need 5 - using sample prices)"))
+        if not result and scraped:
+            print("[market] sample row names:", list(scraped)[:8])
         return result if len(result) >= 5 else None   # Need at least 5 crops
-    except Exception:
+    except Exception as e:
+        print("[market] DAM fetch failed:", repr(e))
         return None
 
 
