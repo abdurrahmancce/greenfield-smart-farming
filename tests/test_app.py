@@ -107,3 +107,11 @@ def test_report_renders(client):
     c = _login(client, "r@b.co")
     r = c.get("/report")
     assert r.status_code == 200 and b"Financial Summary" in r.data
+
+
+def test_push_test_requires_login_and_config(client):
+    assert client.post("/api/push/test", headers=H).status_code in (302, 401, 403)
+    register(client)
+    client.post("/login", data={"email": "a@b.co", "password": "password1"}, headers=H)
+    A.PUSH_ENABLED = False
+    assert client.post("/api/push/test", headers=H).status_code == 503

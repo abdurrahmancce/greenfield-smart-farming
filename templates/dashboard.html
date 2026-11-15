@@ -19,6 +19,7 @@
   <div class="card-header">
     <h2><i class="fas fa-clipboard-check"></i> {{ 'আজকের কাজ' if is_bn else "Today's Tasks" }}</h2>
     <button class="btn btn-secondary btn-sm" id="pushBtn" style="display:none" type="button"><i class="fas fa-bell"></i> <span>{{ 'অ্যালার্ট চালু করুন' if is_bn else 'Enable alerts' }}</span></button>
+    <button class="btn btn-secondary btn-sm" id="pushTest" style="display:none" type="button"><i class="fas fa-paper-plane"></i> <span>{{ 'টেস্ট অ্যালার্ট' if is_bn else 'Send test alert' }}</span></button>
   </div>
   <div class="card-body">
     <div id="tasksBox" style="font-size:13.5px;color:var(--muted)">{{ 'লোড হচ্ছে…' if is_bn else 'Loading…' }}</div>
@@ -208,7 +209,17 @@
   var btn = document.getElementById('pushBtn');
   if(!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
   function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o;}
-  function label(on){btn.querySelector('span').textContent = on ? T('Alerts on ✓','অ্যালার্ট চালু ✓') : T('Enable alerts','অ্যালার্ট চালু করুন');}
+  var tbtn = document.getElementById('pushTest');
+  function label(on){btn.querySelector('span').textContent = on ? T('Alerts on ✓','অ্যালার্ট চালু ✓') : T('Enable alerts','অ্যালার্ট চালু করুন'); tbtn.style.display = on ? '' : 'none';}
+  tbtn.onclick = function(){
+    tbtn.disabled = true;
+    fetch('/api/push/test',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});}).then(function(x){
+      tbtn.disabled = false;
+      if(!x.ok){ alert(x.j.error || T('Could not send.','পাঠানো যায়নি।')); return; }
+      if(x.j.sent>0) alert(T('Test sent. It should appear in a few seconds.','টেস্ট পাঠানো হয়েছে। কয়েক সেকেন্ডে দেখা যাবে।'));
+      else alert(T('The server could not deliver it. Turn alerts off and on again, then retry.','সার্ভার পাঠাতে পারেনি। অ্যালার্ট বন্ধ করে আবার চালু করে আবার চেষ্টা করুন।'));
+    }).catch(function(){ tbtn.disabled=false; alert(T('Could not send.','পাঠানো যায়নি।')); });
+  };
   fetch('/api/push/key',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(k){
     if(!k.enabled) return;
     btn.style.display='';

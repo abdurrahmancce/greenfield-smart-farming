@@ -2593,6 +2593,35 @@ def api_push_unsubscribe():
     conn.commit(); conn.close()
     return jsonify({"ok": True})
 
+_last_test_push = {}
+
+@app.route("/api/push/test", methods=["POST"])
+@login_required
+def api_push_test():
+    """Send a test notification to the signed-in user's own devices (once per 20 s)."""
+    if not PUSH_ENABLED:
+        return jsonify({"error": "Alerts are not configured on this server."}), 503
+    uid = session["user_id"]
+    now = time.time()
+    if now - _last_test_push.get(uid, 0) < 20:
+        return jsonify({"error": "Please wait a few seconds."}), 429
+    _last_test_push[uid] = now
+    conn = get_db()
+    subs = [dict(r) for r in conn.execute("SELECT * FROM push_subs WHERE user_id=?", (uid,)).fetchall()]
+    sent = gone = failed = 0
+    bn = session.get("lang") == "bn"
+    payload = {"title": "🌱 GreenField", "tag": "gf-test", "url": "/dashboard",
+               "body": "অ্যালার্ট ঠিকমতো কাজ করছে ✓" if bn else "Test alert — your alerts are working ✓"}
+    for sub in subs:
+        r = send_push(sub, payload)
+        if r == "ok": sent += 1
+        elif r == "gone":
+            gone += 1
+            conn.execute("DELETE FROM push_subs WHERE id=?", (sub["id"],)); conn.commit()
+        else: failed += 1
+    conn.close()
+    return jsonify({"sent": sent, "expired": gone, "failed": failed, "devices": len(subs)})
+
 def send_push(sub, payload):
     """Send one notification. Returns 'ok', 'gone' (subscription expired) or 'error'."""
     try:
