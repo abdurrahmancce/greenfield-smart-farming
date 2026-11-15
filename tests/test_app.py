@@ -69,3 +69,41 @@ def test_irrigate_rule():
     f = {"id": 1, "farm_name": "F", "crop_type": "Tomato", "planting_date": "2026-10-01"}
     t = farm_tasks.build_tasks(f, None, "2026-10-01", None, None, today=__import__("datetime").date(2026, 11, 14))
     assert any(x["kind"] == "irrigate" for x in t)
+
+def _login(c, email="s@b.co"):
+    register(c, email=email)
+    c2 = A.app.test_client()
+    c2.post("/login", data={"email": email, "password": "password1"}, headers=H)
+    return c2
+
+def test_password_change_signs_out_other_devices(client):
+    a = _login(client)
+    b = A.app.test_client()
+    b.post("/login", data={"email": "s@b.co", "password": "password1"}, headers=H)
+    assert a.get("/dashboard").status_code == 200 and b.get("/dashboard").status_code == 200
+    a.post("/profile", data={"action": "change_password", "current_password": "password1",
+                             "new_password": "newpassword2", "confirm_password": "newpassword2"}, headers=H)
+    assert a.get("/dashboard").status_code == 200           # the device that changed it stays in
+    assert b.get("/dashboard").status_code == 302           # the other one is signed out
+
+def test_record_market_price_and_trend(client):
+    c = _login(client, "m@b.co")
+    crop = list(A.get_market_prices()[0].keys())[0]
+    for _ in range(1):
+        r = c.post("/market/record", data={"crop": crop, "price": "50"}, headers=H)
+        assert r.status_code == 302
+    assert c.post("/market/record", data={"crop": crop, "price": "-5"}, headers=H).status_code == 302
+    conn = A.get_db()
+    rows = conn.execute("SELECT price, source FROM price_history WHERE crop=?", (crop,)).fetchall()
+    assert len(rows) == 1 and rows[0]["source"] == "manual" and rows[0]["price"] == 50
+    assert b"Your last price" in c.get("/market").data
+
+def test_market_trend_needs_three_points():
+    prices = {"Tomato": {"price": 40, "unit": "kg"}}
+    v = A.market_view(prices, "sample", "en", None)
+    assert v[0]["trend"] == "unknown" and v[0]["kind"] == "seasonal"
+
+def test_report_renders(client):
+    c = _login(client, "r@b.co")
+    r = c.get("/report")
+    assert r.status_code == 200 and b"Financial Summary" in r.data

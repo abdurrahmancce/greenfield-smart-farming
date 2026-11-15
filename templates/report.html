@@ -135,6 +135,23 @@ html[data-theme="dark"] .report-paper .stage-pill{background:rgba(129,199,132,.1
       {% endif %}
     </div>
 
+    <!-- Today's tasks + weather -->
+    {% if wx or tasks %}
+    <div class="rp-section">
+      <div class="rp-section-title"><i class="fas fa-clipboard-check"></i> Today's Outlook</div>
+      {% if wx %}
+      <div style="font-size:12.5px;margin-bottom:8px">{{ wx.city }}: <b>{{ wx.temperature }}°C</b>, {{ wx.description }} · humidity {{ wx.humidity }}% · wind {{ wx.wind_speed }} km/h
+        {% if wx.forecast %}<br><span style="color:#666">Next days:
+        {% for d in wx.forecast[:5] %}{{ d.day }} {{ d.temp }}°/{{ d.lo }}°{% if d.rain %} ({{ d.rain }} mm){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+      </div>
+      {% endif %}
+      {% for t in tasks %}
+      <div style="font-size:12.5px;padding:4px 0;border-top:1px solid #eee"><b>{{ t.icon }} {{ t.title }}</b> — {{ t.farm }}<br><span style="color:#666">{{ t.detail }}</span></div>
+      {% endfor %}
+      <div style="font-size:10.5px;color:#888;margin-top:6px">Rule-based guidance from crop age, irrigation log and the weather forecast — follow your local agriculture officer's advice.</div>
+    </div>
+    {% endif %}
+
     <!-- Financial Summary -->
     <div class="rp-section">
       <div class="rp-section-title"><i class="fas fa-coins"></i> Financial Summary</div>

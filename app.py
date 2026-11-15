@@ -205,6 +205,9 @@ def migrate_db(conn):
         ("users", "google_id",    "TEXT DEFAULT ''"),
         ("users", "account_id",   "TEXT"),
         ("disease_scans", "photo_key", "TEXT DEFAULT ''"),
+        ("users", "sess_ver", "INTEGER DEFAULT 0"),
+        ("price_history", "user_id", "INTEGER"),
+        ("price_history", "source", "TEXT DEFAULT 'live'"),
     ]
     for table, col, definition in new_cols:
         try:
@@ -527,6 +530,36 @@ def hash_token(t):
 
 MIN_PASSWORD = 8
 _DUMMY_HASH = generate_password_hash("gf-dummy-password-for-timing")
+
+@app.before_request
+def check_session_version():
+    """Password change/reset bumps users.sess_ver - every older login is signed out."""
+    if "user_id" not in session or request.path.startswith("/static") or request.path in ("/healthz", "/sw.js", "/offline"):
+        return None
+    try:
+        conn = get_db()
+        row = conn.execute("SELECT sess_ver FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        conn.close()
+    except Exception:
+        return None                                   # never lock people out because of a DB hiccup
+    if not row:
+        session.clear()
+        return None
+    cur = int(row["sess_ver"] or 0)
+    if "sv" not in session:
+        session["sv"] = cur                           # sessions that pre-date this feature adopt the current version
+    elif session["sv"] != cur:
+        session.clear()
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Session expired. Please log in again."}), 401
+        flash("Your password was changed - please log in again.", "error")
+        return redirect(url_for("login"))
+    return None
+
+def bump_sessions(conn, uid):
+    conn.execute("UPDATE users SET sess_ver=COALESCE(sess_ver,0)+1 WHERE id=?", (uid,))
+    r = conn.execute("SELECT sess_ver FROM users WHERE id=?", (uid,)).fetchone()
+    return int(r["sess_ver"] or 0)
 
 @app.before_request
 def csrf_origin_check():
@@ -979,6 +1012,7 @@ def reset_password(token):
             conn.execute(
                 "UPDATE password_resets SET used=1 WHERE user_id=?", (reset_row["user_id"],)
             )
+            bump_sessions(conn, reset_row["user_id"])
             conn.commit()
             conn.close()
             log_activity("reset", "password", f"user_id={reset_row['user_id']}")
@@ -1047,6 +1081,7 @@ def profile():
             else:
                 conn.execute("UPDATE users SET password=? WHERE id=?",
                              (generate_password_hash(new_pw), uid))
+                session["sv"] = bump_sessions(conn, uid)      # other devices are signed out, this one stays
                 conn.commit()
                 log_activity("updated","profile","Password changed")
                 flash("✅ Password changed.", "success")
@@ -1980,10 +2015,10 @@ def _record_prices(prices, source):
     try:
         conn = get_db()
         for crop, d in prices.items():
-            if conn.execute("SELECT id FROM price_history WHERE crop=? AND day=?", (crop, day)).fetchone():
-                conn.execute("UPDATE price_history SET price=? WHERE crop=? AND day=?", (float(d["price"]), crop, day))
+            if conn.execute("SELECT id FROM price_history WHERE crop=? AND day=? AND source='live'", (crop, day)).fetchone():
+                conn.execute("UPDATE price_history SET price=? WHERE crop=? AND day=? AND source='live'", (float(d["price"]), crop, day))
             else:
-                conn.execute("INSERT INTO price_history (crop,price,unit,day) VALUES (?,?,?,?)",
+                conn.execute("INSERT INTO price_history (crop,price,unit,day,source) VALUES (?,?,?,?,'live')",
                              (crop, float(d["price"]), d.get("unit", "kg"), day))
         conn.commit(); conn.close()
     except Exception as e:
@@ -1999,38 +2034,43 @@ def _calendar_for(crop):
 
 _MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
-def market_view(prices, source, lang="en"):
-    """Add a REAL trend (from stored live history) or an honest seasonal hint to every crop."""
+def market_view(prices, source, lang="en", uid=None):
+    """Trend/advice from REAL data only: stored live quotes + the prices this user recorded themselves."""
     bn = lang == "bn"
-    hist = {}
+    live, mine = {}, {}
     try:
         conn = get_db()
-        since = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
-        for r in conn.execute("SELECT crop, price, day FROM price_history WHERE day>=? ORDER BY day", (since,)).fetchall():
-            hist.setdefault(r["crop"], []).append((r["day"], float(r["price"])))
+        since = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+        for r in conn.execute("SELECT crop, price, day, source, user_id FROM price_history WHERE day>=? ORDER BY day", (since,)).fetchall():
+            if (r["source"] or "live") == "manual":
+                if uid is not None and r["user_id"] == uid:
+                    mine.setdefault(r["crop"], []).append((r["day"], float(r["price"])))
+            else:
+                live.setdefault(r["crop"], []).append((r["day"], float(r["price"])))
         conn.close()
     except Exception:
         pass
     mon = datetime.now().strftime("%b")
     out = []
     for crop, d in prices.items():
-        pts = hist.get(crop, [])
+        pts = sorted(live.get(crop, []) + mine.get(crop, []))
         trend, tip, kind = "unknown", "", "seasonal"
-        if source == "live" and len(pts) >= 3:
+        if len(pts) >= 3:
             vals = [v for _, v in pts]
-            cur, prev = d["price"], vals[:-1]
+            cur, prev = vals[-1], vals[:-1]
             avg = sum(prev) / len(prev)
             chg = (cur - avg) / avg * 100 if avg else 0
             trend = "up" if chg >= 3 else "down" if chg <= -3 else "stable"
             hi, lo = max(vals), min(vals)
-            if cur >= lo + 0.75 * (hi - lo) and hi > lo:
-                tip = (f"দাম গত {len(pts)} দিনের সর্বোচ্চের কাছাকাছি — বিক্রির ভালো সময়।" if bn else
-                       f"Price is near its {len(pts)}-day high — a good moment to sell if your crop is ready.")
-            elif cur <= lo + 0.25 * (hi - lo) and hi > lo:
-                tip = (f"দাম গত {len(pts)} দিনের সর্বনিম্নের কাছাকাছি — সম্ভব হলে সংরক্ষণ করে অপেক্ষা করুন।" if bn else
-                       f"Price is near its {len(pts)}-day low — hold and store if you can.")
+            n = len(pts)
+            if hi > lo and cur >= lo + 0.75 * (hi - lo):
+                tip = (f"দাম রেকর্ড করা {n}টির মধ্যে সর্বোচ্চের কাছাকাছি — বিক্রির ভালো সময়।" if bn else
+                       f"Price is near the top of your {n} recorded prices — a good moment to sell if your crop is ready.")
+            elif hi > lo and cur <= lo + 0.25 * (hi - lo):
+                tip = (f"দাম রেকর্ড করা {n}টির মধ্যে সর্বনিম্নের কাছাকাছি — সম্ভব হলে সংরক্ষণ করে অপেক্ষা করুন।" if bn else
+                       f"Price is near the bottom of your {n} recorded prices — hold and store if you can.")
             else:
-                tip = (f"দাম গত {len(pts)} দিনের মাঝামাঝি।" if bn else f"Price is mid-range for the last {len(pts)} days.")
+                tip = (f"দাম রেকর্ড করা {n}টির মাঝামাঝি।" if bn else f"Price is mid-range across {n} recorded prices.")
             kind = "history"
         else:
             cal = _calendar_for(crop)
@@ -2046,10 +2086,38 @@ def market_view(prices, source, lang="en"):
                        "No seasonal pattern to flag right now.")
             else:
                 tip = "এই ফসলের জন্য মৌসুমি তথ্য নেই।" if bn else "No seasonal data for this crop."
-        spark = [v for _, v in pts][-30:]
+        last_mine = mine[crop][-1] if mine.get(crop) else None
         out.append({"crop": crop, "price": d["price"], "unit": d["unit"], "trend": trend, "tip": tip,
-                    "kind": kind, "spark": spark, "samples": len(pts)})
+                    "kind": kind, "spark": [v for _, v in pts][-30:], "samples": len(pts),
+                    "mine": {"price": last_mine[1], "day": last_mine[0]} if last_mine else None})
     return out
+
+@app.route("/market/record", methods=["POST"])
+@login_required
+def market_record():
+    """The user records a price they actually saw at their local market (BDT per unit)."""
+    crop = (request.form.get("crop") or "").strip()
+    prices, _, _ = get_market_prices()
+    if crop not in prices:
+        flash("Unknown crop.", "error"); return redirect(url_for("market_page"))
+    try:
+        price = float(request.form.get("price", ""))
+    except ValueError:
+        price = -1
+    if not (0 < price < 100000):
+        flash("Enter a valid price in ৳.", "error"); return redirect(url_for("market_page"))
+    day = datetime.now().strftime("%Y-%m-%d")
+    uid = session["user_id"]
+    conn = get_db()
+    row = conn.execute("SELECT id FROM price_history WHERE crop=? AND day=? AND source='manual' AND user_id=?", (crop, day, uid)).fetchone()
+    if row:
+        conn.execute("UPDATE price_history SET price=? WHERE id=?", (price, row["id"]))
+    else:
+        conn.execute("INSERT INTO price_history (crop,price,unit,day,source,user_id) VALUES (?,?,?,?,'manual',?)",
+                     (crop, price, prices[crop].get("unit", "kg"), day, uid))
+    conn.commit(); conn.close()
+    flash(f"Saved: {crop} ৳{price:g} today.", "success")
+    return redirect(url_for("market_page"))
 
 @app.route("/market")
 @login_required
@@ -2058,7 +2126,7 @@ def market_page():
     _record_prices(prices, source)
     updated_str = fetched_at.strftime("%d %b %Y, %I:%M %p") if fetched_at else datetime.now().strftime("%d %b %Y")
     return render_template("market.html", prices=prices,
-                           view=market_view(prices, source, session.get("lang", "en")),
+                           view=market_view(prices, source, session.get("lang", "en"), session["user_id"]),
                            updated=updated_str,
                            price_source=source)
 
@@ -2112,6 +2180,20 @@ def set_language(lang):
 # ══════════════════════════════════════════════════════════════════
 #  PDF FARM REPORT
 # ══════════════════════════════════════════════════════════════════
+def _report_tasks(uid):
+    try:
+        return tasks_for_user(uid, session.get("lang", "en"))[0][:8]
+    except Exception as e:
+        print("[report] tasks failed:", repr(e)); return []
+
+def _report_weather(farms):
+    try:
+        city = next((f["location"] for f in farms if f["location"]), "Chittagong")
+        w = get_weather(city)
+        return w if w.get("source") == "live" else None      # never print mock weather in a report
+    except Exception:
+        return None
+
 @app.route("/report")
 @login_required
 def report_page():
@@ -2146,7 +2228,8 @@ def report_page():
         user=user, farms=farms, growth=growth,
         irrigations=irrigations, expenses=expenses,
         total_income=total_income, total_expense=total_expense,
-        profit=profit, today=today, fin=finance_summary(uid))
+        profit=profit, today=today, fin=finance_summary(uid),
+        tasks=_report_tasks(uid), wx=_report_weather(farms))
 
 
 # ══════════════════════════════════════════════════════════════════
