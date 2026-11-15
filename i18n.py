@@ -462,7 +462,7 @@ BN = {
     "Reference prices (DAM Nov 2026)": "রেফারেন্স দাম (ডিএএম, নভেম্বর ২০২৬)",
     "Live data from DAM": "ডিএএম থেকে সরাসরি তথ্য",
     "Last fetched:": "সর্বশেষ সংগ্রহ:",
-    "Live fetch unavailable — will retry in 6 hours": "সরাসরি তথ্য পাওয়া যায়নি — ৬ ঘণ্টা পর আবার চেষ্টা করা হবে",
+    
     "Indicative averages for Bangladesh wholesale markets. Actual prices may vary by region, quality, and season.": "এগুলো বাংলাদেশের পাইকারি বাজারের আনুমানিক গড় দাম। অঞ্চল, মান ও মৌসুম অনুযায়ী প্রকৃত দাম আলাদা হতে পারে।",
     "Prices last updated: ": "দাম সর্বশেষ আপডেট: ",
 
