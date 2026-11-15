@@ -115,3 +115,30 @@ def test_push_test_requires_login_and_config(client):
     client.post("/login", data={"email": "a@b.co", "password": "password1"}, headers=H)
     A.PUSH_ENABLED = False
     assert client.post("/api/push/test", headers=H).status_code == 503
+
+
+def test_crop_mismatch_warning():
+    import datetime
+    d = datetime.date(2026, 11, 14)
+    # farm name says tea, crop says Rice -> a low-priority warning
+    f = {"id": 1, "farm_name": "Tea Garden", "crop_type": "Rice", "planting_date": "2026-11-01"}
+    kinds = [t["kind"] for t in farm_tasks.build_tasks(f, None, None, None, None, today=d)]
+    assert "crop_mismatch" in kinds
+    # matching name and crop -> no warning
+    f2 = {"id": 2, "farm_name": "Rice Field North", "crop_type": "Rice", "planting_date": "2026-11-01"}
+    assert "crop_mismatch" not in [t["kind"] for t in farm_tasks.build_tasks(f2, None, None, None, None, today=d)]
+    # names with no crop word never warn
+    f3 = {"id": 3, "farm_name": "Hurricane", "crop_type": "Wheat", "planting_date": "2026-11-01"}
+    assert "crop_mismatch" not in [t["kind"] for t in farm_tasks.build_tasks(f3, None, None, None, None, today=d)]
+    # alias: 'Corn Plot' with crop Maize is fine
+    f4 = {"id": 4, "farm_name": "Corn Plot", "crop_type": "Maize", "planting_date": "2026-11-01"}
+    assert "crop_mismatch" not in [t["kind"] for t in farm_tasks.build_tasks(f4, None, None, None, None, today=d)]
+
+
+def test_market_placeholder_is_bangla(client):
+    c = _login(client, "bn@b.co")
+    c.get("/set-language/bn")
+    html = c.get("/market").data.decode("utf-8")
+    assert "আপনার দেখা দাম" in html and "Price you saw" not in html
+    c.get("/set-language/en")
+    assert "Price you saw" in c.get("/market").data.decode("utf-8")

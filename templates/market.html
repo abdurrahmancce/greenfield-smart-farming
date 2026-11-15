@@ -81,7 +81,7 @@
     {% if data.mine %}<div style="font-size:12px;margin-top:6px;color:var(--muted)">Your last price: <b style="color:var(--text)">৳{{ '%g'|format(data.mine.price) }}</b> ({{ data.mine.day }})</div>{% endif %}
     <form method="post" action="{{ url_for('market_record') }}" style="display:flex;gap:6px;margin-top:8px">
       <input type="hidden" name="crop" value="{{ data.crop }}">
-      <input type="number" name="price" step="0.5" min="1" required placeholder="Price you saw (৳/{{ data.unit }})" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--border,#ccc);background:var(--bg);color:var(--text);font-size:12px">
+      <input type="number" name="price" step="0.5" min="1" required placeholder="{{ ('আপনার দেখা দাম (৳/' ~ data.unit ~ ')') if is_bn else ('Price you saw (৳/' ~ data.unit ~ ')') }}" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--border,#ccc);background:var(--bg);color:var(--text);font-size:12px">
       <button class="btn btn-secondary btn-sm" type="submit">Save</button>
     </form>
     <div class="tip-box">

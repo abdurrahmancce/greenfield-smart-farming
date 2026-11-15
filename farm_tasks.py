@@ -5,6 +5,7 @@ irrigation) combined with the short-term weather forecast. It does NOT use AI, a
 General guidance only - the farmer should always follow local Agriculture Officer (DAE) advice.
 """
 import time
+import re
 from datetime import datetime, date
 
 # ── crop knowledge (general Bangladesh guidance) ───────────────────────────────────────────────
@@ -56,17 +57,20 @@ _TXT = {
  "harvest_now":  ("Check if ready to harvest", "ফসল পাকল কিনা দেখুন",
                   "It has been {dap} days since planting (expected ~{exp}). Check maturity signs and plan the harvest.",
                   "রোপণের পর {dap} দিন হয়েছে (প্রত্যাশিত ~{exp})। পাকার লক্ষণ দেখে ফসল তোলার পরিকল্পনা করুন।"),
+ "crop_mismatch": ("Check this farm's crop setting", "এই খামারের ফসল ঠিক আছে কিনা দেখুন",
+                  "The farm name mentions \"{named}\" but the crop is set to {crop}. Tasks follow the crop setting, so edit the farm if it is wrong.",
+                  "খামারের নামে \"{named}\" আছে, কিন্তু ফসল দেওয়া আছে {crop}। কাজের তালিকা ফসলের সেটিং অনুযায়ী হয়, ভুল হলে খামারটি এডিট করুন।"),
  "followup":     ("Follow up on last diagnosis", "আগের রোগ নির্ণয়ের ফলোআপ",
                   "{dx} was found {days} day(s) ago. Re-check the plants and see whether treatment is working.",
                   "{days} দিন আগে {dx} ধরা পড়েছিল। গাছগুলো আবার দেখুন এবং চিকিৎসা কাজ করছে কিনা যাচাই করুন।"),
 }
-_LINKS = {"irrigate": "/irrigation", "irrigate_never": "/irrigation", "topdress": "/fertilizer", "fungal": "/disease",
+_LINKS = {"crop_mismatch": "/farms", "irrigate": "/irrigation", "irrigate_never": "/irrigation", "topdress": "/fertilizer", "fungal": "/disease",
           "followup": "/disease", "harvest_soon": "/growth", "harvest_now": "/growth", "rice_water": "/irrigation",
           "skip_irrigation": "/irrigation"}
-_ICON = {"rain_alert": "⛈️", "heat_alert": "🌡️", "irrigate": "💧", "irrigate_never": "💧", "skip_irrigation": "🌧️",
+_ICON = {"crop_mismatch": "❓", "rain_alert": "⛈️", "heat_alert": "🌡️", "irrigate": "💧", "irrigate_never": "💧", "skip_irrigation": "🌧️",
          "rice_water": "🌾", "topdress": "🧪", "fungal": "🍄", "harvest_soon": "🧺", "harvest_now": "🌾", "followup": "🔎"}
 _PRI = {"rain_alert": 0, "heat_alert": 0, "irrigate": 0, "fungal": 0, "harvest_now": 0, "topdress": 1, "harvest_soon": 1,
-        "followup": 1, "irrigate_never": 2, "skip_irrigation": 2, "rice_water": 2}
+        "followup": 1, "crop_mismatch": 2, "irrigate_never": 2, "skip_irrigation": 2, "rice_water": 2}
 
 
 def crop_key(name):
@@ -122,6 +126,22 @@ def fetch_forecast(city, api_key, requests_mod, ttl=1800):
     return data
 
 
+# crop words that may appear in a farm's NAME (includes crops the task rules do not cover, such as tea)
+NAME_CROPS = set(IRRIGATION_DAYS) | set(ALIASES) | {"tea", "sugarcane", "banana", "mango", "jackfruit", "cotton", "tobacco", "coconut"}
+
+
+def name_crop_mismatch(farm):
+    """If the farm NAME contains a crop word that disagrees with the crop setting, return that word (else '')."""
+    crop = (farm.get("crop_type") or "").strip()
+    if not crop:
+        return ""
+    ck = crop_key(crop)
+    for w in re.findall(r"[a-z]+", (farm.get("farm_name") or "").lower()):
+        if w in NAME_CROPS and ALIASES.get(w, w) != (ck or crop.lower()):
+            return w
+    return ""
+
+
 def build_tasks(farm, growth=None, last_irrigation=None, scan=None, wx=None, today=None, lang="en"):
     """farm: dict(id,farm_name,crop_type,planting_date); growth: dict(expected_days,growth_stage) or None;
     last_irrigation: 'YYYY-MM-DD' or None; scan: dict(diagnosis,health_status,severity,created_at) or None;
@@ -140,6 +160,9 @@ def build_tasks(farm, growth=None, last_irrigation=None, scan=None, wx=None, tod
                     "title": t[1] if bn else t[0], "detail": (t[3] if bn else t[2]).format(**kw),
                     "farm_id": farm["id"], "farm": farm.get("farm_name", ""), "link": _LINKS.get(kind, "")})
 
+    named = name_crop_mismatch(farm)
+    if named:
+        add("crop_mismatch", named=named, crop=crop_label)
     rain = wx["rain_mm"] if wx else 0
     # weather alerts
     if wx and (rain >= 15 or (wx["pop"] >= 0.8 and wx["wind_kmh"] >= 40) or wx["wind_kmh"] >= 55):

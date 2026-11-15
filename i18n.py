@@ -595,6 +595,7 @@ BN = {
     "Cloud Cover": "মেঘের আচ্ছাদন",
     "7-Day Forecast": "৭ দিনের পূর্বাভাস",
     "5-Day Forecast": "৫ দিনের পূর্বাভাস",
+    "Daily Forecast": "দৈনিক পূর্বাভাস",
     "Mock": "নমুনা", "Sample": "নমুনা",
     "Search city…": "শহর খুঁজুন…",
     "Weather for": "আবহাওয়া:",
