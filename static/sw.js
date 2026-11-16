@@ -1,13 +1,5 @@
-/* GreenField Service Worker v4
- *
- * Served from /sw.js (site root) so it really controls every page.
- *  - Pages: network first, but if the server is slow (Render free tier waking up)
- *    or offline, the last saved copy of that page is shown instead.
- *  - Static files + CDN fonts/icons/libraries: stale-while-revalidate.
- *  - /offline is pre-cached and used when nothing else is available.
- *  - Saved pages are wiped on logout so the next person never sees them.
- */
-const VERSION = 'v4';
+/* Static assets and a public offline shell only. Never cache private HTML. */
+const VERSION = 'v5-security';
 const STATIC = 'gf-static-' + VERSION;
 const PAGES = 'gf-pages-' + VERSION;
 const SLOW_MS = 3500;               // after this, prefer the saved copy of a page
@@ -33,7 +25,8 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== STATIC && k !== PAGES).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== STATIC).map(k => caches.delete(k))))
+      .then(() => { if ('indexedDB' in self) indexedDB.deleteDatabase('gf-disease'); })
       .then(() => self.clients.claim())
   );
 });
@@ -41,43 +34,7 @@ self.addEventListener('activate', e => {
 const cacheable = res => res && res.ok && res.type !== 'opaqueredirect' && !res.redirected;
 
 async function handleNavigation(req) {
-  const url = new URL(req.url);
-
-  // Logging out: forget every saved page.
-  if (url.pathname === '/logout') {
-    await caches.delete(PAGES);
-    return fetch(req).catch(() => caches.match('/offline'));
-  }
-
-  const pages = await caches.open(PAGES);
-  const saved = await pages.match(req);
-
-  const network = fetch(req).then(res => {
-    if (cacheable(res) && url.pathname !== '/offline') pages.put(req, res.clone());
-    return res;
-  });
-
-  if (!saved) {
-    // Nothing saved yet: wait for the server; only if it is unreachable show the offline page.
-    return network.catch(() => caches.match('/offline'));
-  }
-
-  // We have a saved copy: use it if the network fails or is slow.
-  return new Promise(resolve => {
-    let done = false;
-    const finish = r => { if (!done) { done = true; resolve(r); } };
-    const timer = setTimeout(() => {
-      if (!done) {
-        bc && bc.postMessage({ type: 'stale', path: url.pathname });
-        finish(saved);
-        // keep waiting in the background; tell the page when fresh data is ready
-        network.then(res => { if (cacheable(res)) bc && bc.postMessage({ type: 'fresh', path: url.pathname }); })
-               .catch(() => {});
-      }
-    }, SLOW_MS);
-    network.then(res => { clearTimeout(timer); finish(res); })
-           .catch(() => { clearTimeout(timer); bc && bc.postMessage({ type: 'offline', path: url.pathname }); finish(saved); });
-  });
+  return fetch(req).catch(async () => (await caches.match('/offline')) || new Response('Offline', {status: 503}));
 }
 
 async function staleWhileRevalidate(req) {
@@ -124,7 +81,8 @@ self.addEventListener('push', e => {
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/dashboard';
+  const target = new URL((e.notification.data && e.notification.data.url) || '/dashboard', self.location.origin);
+  const url = target.origin === self.location.origin ? target.href : '/dashboard';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     for (const c of list) { if ('focus' in c) { c.navigate(url); return c.focus(); } }
     return self.clients.openWindow(url);

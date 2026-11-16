@@ -39,6 +39,7 @@
       <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> Add Growth Record</h3></div>
       <div class="card-body">
         <form method="POST" action="{{ url_for('add_growth') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group">
             <label class="form-label">Farm</label>
             <select name="farm_id" class="form-control" required>
@@ -152,6 +153,7 @@
             <i class="fas fa-edit"></i> Update Stage
           </summary>
           <form method="POST" action="{{ url_for('update_growth', gid=r.id) }}" style="margin-top:8px">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="edit-row">
               <select name="growth_stage" class="form-control" style="font-size:12px;padding:6px 10px">
                 {% for s in ["Seedling","Vegetative","Flowering","Fruiting","Ripening","Harvested"] %}
@@ -170,6 +172,7 @@
         <!-- Delete -->
         <form method="POST" action="{{ url_for('delete_growth', gid=r.id) }}"
               onsubmit="return confirm('Delete this record?')" style="margin-top:6px">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn" style="font-size:11px;color:#EF5350;background:none;border:none;padding:0;cursor:pointer">
             <i class="fas fa-trash"></i> Delete
           </button>

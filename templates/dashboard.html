@@ -184,7 +184,7 @@
 (function(){
   var BN = {{ 'true' if is_bn else 'false' }}, box = document.getElementById('tasksBox');
   function T(en,bn){return BN?bn:en;}
-  var key = 'gf-done-' + new Date().toISOString().slice(0,10), done = {};
+  var key = 'gf-done-' + {{ current_user.id|tojson }} + '-' + new Date().toISOString().slice(0,10), done = {};
   try { done = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e){}
   function esc(x){var d=document.createElement('div');d.textContent=x==null?'':x;return d.innerHTML;}
   fetch('/api/today-tasks',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){

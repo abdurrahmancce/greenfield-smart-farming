@@ -32,7 +32,7 @@ A full-stack smart farming web application designed to help farmers manage farms
 * **Market prices you can trust** - labelled reference values plus prices *you* record; trends are shown only when there is enough real data.
 * **Farm report** - totals, per-farm P&L and today's outlook, printable / save as PDF; full **data export** of your account.
 * **Bangla + English** UI, dark mode, installable offline-friendly PWA.
-* **Engineering** - CSRF (Origin/Referer) protection, login throttling, hashed one-time reset tokens, other devices signed out on password change, security headers; pytest suite run by GitHub Actions on every push; nightly encrypted PostgreSQL backup (pg_dump + AES-256 GPG) kept as a workflow artifact for 30 days; keep-alive workflow for the free hosting tier.
+* **Engineering** - CSRF synchronizer tokens plus Origin checks, shared database login quotas, hashed one-time reset tokens, other devices signed out on password change, security headers; pytest suite run by GitHub Actions on every push; nightly encrypted PostgreSQL backup (pg_dump + AES-256 GPG) kept as a workflow artifact for 30 days; keep-alive workflow for the free hosting tier.
 
 ## ⚠️ Honest limitations
 
@@ -165,7 +165,7 @@ Users can:
 
 * Install the application on supported devices
 * Add it to the mobile home screen
-* Use cached resources when offline
+* Use cached static resources and a public offline screen; private pages are never cached
 * Access the application through a standalone app-like interface
 
 ---
@@ -282,7 +282,7 @@ GreenField includes several basic security measures:
 * Expiring password reset tokens
 * One-time password reset tokens
 * Environment variables for sensitive configuration
-* CSRF protection by Origin/Referer checking on state-changing requests
+* CSRF synchronizer tokens and Origin checks on state-changing requests
 * Login throttling (HTTP 429 after repeated failures)
 * Reset tokens stored hashed; other devices signed out when the password changes
 * Security headers and a minimum 8-character password
@@ -378,7 +378,7 @@ Create a `.env` file or configure environment variables in your development envi
 Example:
 
 ```env
-SECRET_KEY=your-secret-key
+SECRET_KEY=<generate-a-random-secret-of-at-least-32-characters>
 OPENWEATHER_KEY=your-openweather-api-key
 DATABASE_URL=your-database-url
 ```
@@ -692,3 +692,19 @@ If you find the project useful for learning or reference, you can ⭐ star the r
 
 **GreenField Smart Farming**
 A Flask-based smart farming management platform for farm data, weather, fertilizer calculations, analytics, and location management.
+
+
+## Security update — November 2026
+
+See `SECURITY_DEPLOYMENT.md` before deployment. Production requires a separate random
+`SECRET_KEY` and HTTPS `APP_BASE_URL`. Password reset requires working SMTP. Logout
+now uses a confirmation form. Private pages are not available offline; pending crop
+photos stay in the current tab's memory only. Closing/reloading loses pending photos.
+Google login requires a verified email and no longer automatically links existing
+password accounts. Supported push hosts are limited to Google's FCM, Mozilla Push
+and Apple Web Push; other providers are rejected until explicitly reviewed.
+
+AI photo analysis intentionally sends normalized photos, crop text and notes to the
+configured AI provider. EXIF/GPS metadata is removed first. Thumbnails and diagnoses
+are stored locally in the app database. Farm locations are sent to external weather
+and map services. Do not upload information you do not want those services to process.

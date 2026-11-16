@@ -10,7 +10,9 @@ def client(tmp_path):
     A.DB_PATH = str(tmp_path / "t.db")
     A.init_db()
     A.app.config["TESTING"] = True
-    A._throttle.clear() if hasattr(A, "_throttle") else None
+    A._throttle_hits.clear()
+    A._vision_hits.clear()
+    A._last_test_push.clear()
     return A.app.test_client()
 
 H = {"Origin": "http://localhost"}
@@ -92,7 +94,7 @@ def test_record_market_price_and_trend(client):
     for _ in range(1):
         r = c.post("/market/record", data={"crop": crop, "price": "50"}, headers=H)
         assert r.status_code == 302
-    assert c.post("/market/record", data={"crop": crop, "price": "-5"}, headers=H).status_code == 302
+    assert c.post("/market/record", data={"crop": crop, "price": "-5"}, headers=H).status_code == 400
     conn = A.get_db()
     rows = conn.execute("SELECT price, source FROM price_history WHERE crop=?", (crop,)).fetchall()
     assert len(rows) == 1 and rows[0]["source"] == "manual" and rows[0]["price"] == 50

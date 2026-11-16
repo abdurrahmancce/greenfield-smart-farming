@@ -15,6 +15,7 @@
       </div>
       <div class="card-body">
         <form action="{{ url_for('add_note') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-group">
             <label>Farm *</label>
             <select name="farm_id" class="form-control" required>
@@ -122,7 +123,8 @@
               <!-- Delete hidden form -->
               <form id="del-note-{{ n.id }}"
                 action="{{ url_for('delete_note', nid=n.id) }}"
-                method="POST" style="display:none"></form>
+                method="POST" style="display:none">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
               <button class="btn btn-danger btn-sm btn-icon" title="Delete"
                 onclick="deleteNote({{ n.id }})">
                 <i class="fas fa-trash"></i>
@@ -150,6 +152,7 @@
       <button class="btn-x" data-close="editNoteModal">&times;</button>
     </div>
     <form action="#" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="modal-body">
         <div class="form-group">
           <label>Title</label>

@@ -288,23 +288,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Fertilizer Calculator ──
-const FERT = {
-  rice:    {N:120,P:60, K:60, notes:'Split N into 3 doses'},
-  wheat:   {N:100,P:60, K:40, notes:'Apply at sowing + tillering'},
-  maize:   {N:150,P:70, K:70, notes:'Side-dress at knee height'},
-  tomato:  {N:100,P:80, K:120,notes:'High K for fruit quality'},
-  potato:  {N:120,P:100,K:150,notes:'Apply K at planting'},
-  jute:    {N:80, P:40, K:40, notes:'Light feeder'},
-  mustard: {N:60, P:40, K:30, notes:'Apply B 0.5 kg/acre'},
-};
+const FERT = {{ fertilizer_rates|tojson }};
 document.getElementById('fertForm')?.addEventListener('submit', e => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const crop = fd.get('calc_crop'), area = parseFloat(fd.get('calc_area'));
-  if (!FERT[crop] || !area) return;
+  if (!FERT[crop] || !Number.isFinite(area) || area <= 0) return;
   const f = FERT[crop];
   const N = (f.N*area).toFixed(1), P = (f.P*area).toFixed(1),
-        K = (f.K*area).toFixed(1), Urea = (f.N*area*2.17).toFixed(1);
+        K = (f.K*area).toFixed(1), Urea = (f.N*area/0.46).toFixed(1);
   document.getElementById('calcOut').innerHTML = `
     <div style="margin-top:18px;background:var(--bg);border-radius:10px;padding:18px 22px">
       <div style="font-weight:700;margin-bottom:12px;color:var(--p)">

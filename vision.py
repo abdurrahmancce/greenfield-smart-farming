@@ -143,13 +143,13 @@ def _call_gemini(imgs, prompt, models=None):
                 break                        # next model
             print(f"[vision] {model} fast={fast} -> {r.status_code} in {_t.time()-t0:.1f}s")
             if r.status_code == 400 and fast:
-                print("[vision]", r.text[:200]); continue      # retry same model without thinking option
+                print("[vision]", "provider response omitted"); continue      # retry same model without thinking option
             if r.status_code in (400, 404) or r.status_code >= 500:
-                print("[vision]", r.text[:200]); last = r.status_code; break
+                print("[vision]", "provider response omitted"); last = r.status_code; break
             if r.status_code == 429:
                 raise VisionError("The free AI quota is busy right now. Please try again in a minute.")
             if r.status_code in (401, 403):
-                print("[vision] auth error:", r.text[:200])
+                print("[vision] auth error:", "provider response omitted")
                 raise VisionError("The AI key was rejected. The site owner should check GEMINI_API_KEY.")
             if r.status_code != 200:
                 raise VisionError(f"AI service error ({r.status_code}).")
@@ -347,6 +347,24 @@ def add_caution(res, lang):
     return res
 
 
+def normalize_photo(data):
+    """Decode, bound dimensions and remove EXIF/GPS before sending photos upstream."""
+    from PIL import Image, ImageOps
+    import io
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            if im.width * im.height > 16000000:
+                raise ValueError("Image dimensions exceed limit")
+            im.load()
+            clean_image = ImageOps.exif_transpose(im).convert("RGB")
+            clean_image.thumbnail((2048, 2048))
+            output = io.BytesIO()
+            clean_image.save(output, format="JPEG", quality=90)
+            return output.getvalue()
+    except (OSError, ValueError, Image.DecompressionBombError):
+        raise VisionError("Invalid image or dimensions too large. Please choose a smaller photo.")
+
+
 def analyze(image_bytes, crop="", notes="", lang="en"):
     """image_bytes: one photo (bytes) or a list of up to 3 photos of the same problem."""
     prov = provider()
@@ -361,7 +379,7 @@ def analyze(image_bytes, crop="", notes="", lang="en"):
         mime = sniff_mime(p)
         if mime not in ALLOWED_MIME:
             raise VisionError("Unsupported image type. Please upload a JPG, PNG or WebP photo.")
-        imgs.append((mime, base64.b64encode(p).decode()))
+        imgs.append(("image/jpeg", base64.b64encode(normalize_photo(p)).decode()))
     prompt = build_prompt(crop, notes[:600], lang, "main", len(imgs))
     try:
         if prov == "gemini":

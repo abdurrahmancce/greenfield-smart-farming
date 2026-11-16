@@ -970,7 +970,7 @@ _BN_PAT = _compile_patterns(BN_PATTERNS)
 
 
 def _esc(s):
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return _html.escape(s, quote=True)
 
 
 _EMOJI_LEAD = re.compile(r"^([^\w\u0980-\u09FF(]+)(\S.*)$")

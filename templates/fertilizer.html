@@ -135,7 +135,8 @@
                   </button>
                   <form id="del-fert-{{ h.id }}"
                     action="{{ url_for('delete_fertilizer', rid=h.id) }}"
-                    method="POST" style="display:none"></form>
+                    method="POST" style="display:none">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
                   <button class="btn btn-danger btn-sm btn-icon" title="Delete"
                     onclick="if(confirm('Delete this record?')) document.getElementById('del-fert-{{ h.id }}').submit()">
                     <i class="fas fa-trash"></i>
@@ -166,6 +167,7 @@
       <button class="btn-x" data-close="editFertModal">&times;</button>
     </div>
     <form action="#" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group">

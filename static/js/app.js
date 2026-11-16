@@ -169,7 +169,8 @@ function toast(msg, type = "success") {
   const el = document.createElement("div");
   el.className = `flash ${type}`;
   el.innerHTML = `<i class="fas fa-${type === "success" ? "check-circle" : "exclamation-circle"}"></i>
-                  <span>${msg}</span><button class="flash-close">&times;</button>`;
+                  <span></span><button class="flash-close">&times;</button>`;
+  el.querySelector("span").textContent = msg;
   el.querySelector(".flash-close").onclick = () => dismiss(el);
   wrap.appendChild(el);
   setTimeout(() => dismiss(el), 5000);

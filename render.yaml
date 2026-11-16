@@ -8,7 +8,7 @@ services:
   - type: web
     name: greenfield-smart-farming
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.lock.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --preload
     envVars:
       - key: PYTHON_VERSION
@@ -17,6 +17,9 @@ services:
         generateValue: true
       - key: FLASK_ENV
         value: production
+      # Only for Render edge ingress; do not enable on a directly exposed server.
+      - key: TRUST_RENDER_PROXY
+        value: "1"
       - key: OPENWEATHER_KEY
         value: ""
       # Photo disease analysis (free key: https://aistudio.google.com/apikey)
@@ -29,7 +32,7 @@ services:
       - key: APP_BASE_URL
         value: "https://greenfield-smart-farming-1.onrender.com"
       # Optional — for real password-reset emails via Gmail SMTP.
-      # Leave blank to have reset links printed to the server log instead.
+      # Required for password-reset delivery; reset tokens are never logged.
       - key: MAIL_SERVER
         value: ""
       - key: MAIL_PORT

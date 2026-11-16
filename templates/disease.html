@@ -429,13 +429,13 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
     }catch(e){}
   }
 
-  /* ---- offline queue (IndexedDB) ---- */
-  const DB='gf-disease',STORE='queue';
-  const idb=()=>new Promise((res,rej)=>{const q=indexedDB.open(DB,1);q.onupgradeneeded=()=>q.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)});
-  const tx=async(mode,fn)=>{const db=await idb();return new Promise((res,rej)=>{const t=db.transaction(STORE,mode),s=t.objectStore(STORE);const r=fn(s);t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error)})};
-  const qAdd=item=>tx('readwrite',s=>s.add(item));
-  const qAll=()=>tx('readonly',s=>s.getAll());
-  const qDel=id=>tx('readwrite',s=>s.delete(id));
+  /* Photos stay only in this tab's memory; never persist across accounts. */
+  const pending = new Map(); let nextPending = 0;
+  const qAdd = async item => { const id = ++nextPending; pending.set(id, {...item, id}); return id; };
+  const qAll = async () => [...pending.values()];
+  const qDel = async id => pending.delete(id);
+  // Purge the legacy account-independent persistent queue on upgrade.
+  if ('indexedDB' in window) indexedDB.deleteDatabase('gf-disease');
   let processing=false;
 
   async function renderPending(){
@@ -447,7 +447,7 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
         const th=el('img','hist-thumb');th.src=it.thumb||'';th.alt='';
         const main=el('div','hist-main');
         main.appendChild(el('div','hist-title','⏳ '+(it.crop||T('Plant photo','গাছের ছবি'))));
-        main.appendChild(el('div','hist-sub',T('Saved on this device · waiting for internet','এই ডিভাইসে সংরক্ষিত · ইন্টারনেটের অপেক্ষায়')));
+        main.appendChild(el('div','hist-sub',T('Kept in this tab only · closing loses pending photos','শুধু এই ট্যাবে আছে · বন্ধ করলে অপেক্ষমাণ ছবি মুছে যাবে')));
         const go=el('button','btn btn-outline',T('Analyze now','এখনই বিশ্লেষণ'));go.type='button';go.style.padding='6px 10px';
         go.onclick=()=>processQueue(true);
         const del=el('button','hist-del');del.type='button';del.innerHTML='<i class="fas fa-trash"></i>';
@@ -467,6 +467,8 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
 
   async function processQueue(manual){
     if(processing||!navigator.onLine)return;
+    const who = await fetch('/api/session-owner', {cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+    if (!who || who.user_id !== {{ current_user.id|tojson }}) { pending.clear(); await renderPending(); return; }
     let items;try{items=await qAll()}catch(e){return}
     if(!items.length)return;
     processing=true;let done=0,last=null;
@@ -494,7 +496,7 @@ function resetForm(){document.getElementById('symptoms').value='';document.getEl
       try{await qAdd({blobs:photos.map(p=>p.blob),crop,notes,farm,thumb:photos[0].thumb,created:Date.now()});
         $('loadingState').style.display='none';$('emptyState').style.display='block';
         await renderPending();clearPhoto();
-        alert(T('You are offline. The photo is saved on this device and will be analysed automatically when the internet returns.','আপনি অফলাইনে আছেন। ছবিটি এই ডিভাইসে সংরক্ষিত হয়েছে, ইন্টারনেট ফিরলে নিজে থেকেই বিশ্লেষণ হবে।'));
+        alert(T('You are offline. The photo is kept only in this tab until the internet returns. Closing or reloading loses pending photos.','আপনি অফলাইনে আছেন। ছবিটি শুধু এই ট্যাবে আছে। ইন্টারনেট ফিরলে বিশ্লেষণ হবে; ট্যাব বন্ধ বা রিলোড করলে অপেক্ষমাণ ছবি হারাবে।'));
       }catch(e){alert(T('Could not save the photo offline.','ছবিটি অফলাইনে সংরক্ষণ করা যায়নি।'))}
     };
     if(!navigator.onLine){await queueIt();btn.disabled=false;return}

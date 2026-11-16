@@ -57,12 +57,13 @@
               </button>
               <!-- DELETE: JS confirms then submits hidden form -->
               <button class="btn btn-danger btn-sm btn-icon" title="Delete"
-                onclick="deleteFarm({{ f.id }}, '{{ f.farm_name|replace("'","\\'") }}')">
+                onclick='deleteFarm({{ f.id }}, {{ f.farm_name|tojson }})' >
                 <i class="fas fa-trash"></i>
               </button>
               <form id="del-farm-{{ f.id }}"
                 action="{{ url_for('delete_farm', fid=f.id) }}"
-                method="POST" style="display:none"></form>
+                method="POST" style="display:none">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
             </div>
           </td>
         </tr>
@@ -201,6 +202,7 @@ const FARM_CROPS     = {{ farms | map(attribute="crop_type") | list | tojson }};
       <button class="btn-x" data-close="addFarmModal">&times;</button>
     </div>
     <form action="{{ url_for('add_farm') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group">
@@ -259,6 +261,7 @@ const FARM_CROPS     = {{ farms | map(attribute="crop_type") | list | tojson }};
       <button class="btn-x" data-close="editFarmModal">&times;</button>
     </div>
     <form action="#" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group">
@@ -367,11 +370,12 @@ async function initFarmMap() {
     if (!coords) continue; // couldn't find this location — skip silently
 
     const marker = L.marker([coords.lat, coords.lng]).addTo(map);
+    const escPopup = value => { const span = document.createElement('span'); span.textContent = value; return span.innerHTML; };
     marker.bindPopup(`
       <div style="font-family:Poppins,sans-serif;min-width:150px">
-        <strong style="color:#1B5E20">🌾 ${FARM_NAMES[i]}</strong><br/>
-        <span style="color:#666">Crop: ${FARM_CROPS[i]}</span><br/>
-        <span style="color:#666">📍 ${city}</span>
+        <strong style="color:#1B5E20">🌾 ${escPopup(FARM_NAMES[i])}</strong><br/>
+        <span style="color:#666">Crop: ${escPopup(FARM_CROPS[i])}</span><br/>
+        <span style="color:#666">📍 ${escPopup(city)}</span>
       </div>
     `);
     bounds.push([coords.lat, coords.lng]);

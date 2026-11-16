@@ -44,6 +44,7 @@
 
         <!-- Hidden photo upload form -->
         <form id="photoForm" method="POST" enctype="multipart/form-data" style="display:none">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="upload_photo">
           <input type="file" id="photoInput" name="profile_photo" accept="image/*" onchange="submitPhoto(this)">
         </form>
@@ -90,6 +91,7 @@
             <i class="fas fa-search-plus"></i> View Photo
           </button>
           <form method="POST" style="display:inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="remove_photo">
             <button type="submit" style="background:rgba(239,83,80,.08);border:1.5px solid #FFCDD2;color:#ef5350;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s">
               <i class="fas fa-trash-alt"></i> Remove
@@ -168,6 +170,7 @@
       </div>
       <div class="card-body">
         <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="update_info"/>
           <div class="form-row">
             <div class="form-group">
@@ -231,6 +234,7 @@
       </div>
       <div class="card-body">
         <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="change_email"/>
           <div class="form-row">
             <div class="form-group">
@@ -263,6 +267,7 @@
       </div>
       <div class="card-body">
         <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="change_password"/>
           <div class="form-group">
             <label>Current Password *</label>
@@ -360,6 +365,7 @@
       <button class="btn-x" data-close="deleteAccountModal">&times;</button>
     </div>
     <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="delete_account"/>
       <div class="modal-body">
         <div style="background:#FFF5F5;border:1px solid #FFCDD2;border-radius:8px;

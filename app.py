@@ -12,6 +12,9 @@ import i18n
 import vision
 import farm_tasks
 import time
+import re
+import math
+from urllib.parse import urlsplit
 
 # ── Google OAuth ──────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -25,8 +28,7 @@ if GOOGLE_OAUTH_ENABLED:
 OPENWEATHER_KEY = os.environ.get("OPENWEATHER_KEY", "")
 
 # ── Email (for password reset) ─────────────────────────────────────
-# If these env vars are not set, reset links are printed to the server
-# log instead of emailed — useful for local development/testing.
+# Configure SMTP to deliver reset links. Tokens must never be logged.
 MAIL_SERVER   = os.environ.get("MAIL_SERVER", "")
 MAIL_PORT     = int(os.environ.get("MAIL_PORT", "587"))
 MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
@@ -36,21 +38,21 @@ APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024   # photo uploads (profile photo / disease photo)
+_PRODUCTION = os.environ.get("FLASK_ENV") == "production" or bool(os.environ.get("RENDER"))
 _sk = os.environ.get("SECRET_KEY", "")
-if not _sk:
-    # No SECRET_KEY configured: never fall back to a key that is public in the source code.
-    _seed = os.environ.get("DATABASE_URL", "")
-    if _seed:
-        _sk = hashlib.sha256(("gf-session-v1|" + _seed).encode()).hexdigest()   # stable, not guessable
-    else:
-        _sk = secrets.token_hex(32)                                              # local dev: fresh per start
-    print("[security] SECRET_KEY not set - derived a private key. Set SECRET_KEY in the environment.")
-app.secret_key = _sk
-_IS_HTTPS = os.environ.get("APP_BASE_URL", "").startswith("https://")
+if _PRODUCTION and len(_sk) < 32:
+    raise RuntimeError("Production requires an independent SECRET_KEY of at least 32 characters.")
+app.secret_key = _sk or secrets.token_hex(32)
+_IS_HTTPS = APP_BASE_URL.startswith("https://")
+if _PRODUCTION and not _IS_HTTPS:
+    raise RuntimeError("Production APP_BASE_URL must use HTTPS.")
+app.config["TRUSTED_HOSTS"] = [urlsplit(APP_BASE_URL).hostname] if _PRODUCTION else None
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=_IS_HTTPS,
+    SESSION_COOKIE_SECURE=_IS_HTTPS or _PRODUCTION,
+    MAX_FORM_MEMORY_SIZE=512 * 1024,
+    MAX_FORM_PARTS=100,
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
 )
 
@@ -133,7 +135,7 @@ class PGConnWrapper:
         # Split on ; but keep statements intact — PostgreSQL runs one at a time via psycopg2
         for stmt in script.replace("AUTOINCREMENT", "").split(";"):
             stmt = stmt.strip()
-            if not stmt or stmt.startswith("--"):
+            if not stmt:
                 continue
             stmt = stmt.replace("INTEGER PRIMARY KEY", "SERIAL PRIMARY KEY")
             stmt = stmt.replace("datetime('now')", "NOW()::text")
@@ -142,7 +144,7 @@ class PGConnWrapper:
                 cur.execute(stmt)
             except Exception:
                 self._conn.rollback()
-                continue
+                raise
         self._conn.commit()
 
     def commit(self):
@@ -208,6 +210,7 @@ def migrate_db(conn):
         ("users", "sess_ver", "INTEGER DEFAULT 0"),
         ("price_history", "user_id", "INTEGER"),
         ("price_history", "source", "TEXT DEFAULT 'live'"),
+        ("activity_log", "user_id", "INTEGER"),
     ]
     for table, col, definition in new_cols:
         try:
@@ -260,6 +263,11 @@ def init_db():
     conn = get_db()
     migrate_db(conn)
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS security_limits (
+            key TEXT PRIMARY KEY,
+            hits INTEGER NOT NULL,
+            expires REAL NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS users (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             name         TEXT    NOT NULL,
@@ -405,8 +413,8 @@ def init_db():
 def log_activity(action, target, detail=""):
     try:
         conn = get_db()
-        conn.execute("INSERT INTO activity_log (action,target,detail) VALUES (?,?,?)",
-                     (action, target, detail))
+        conn.execute("INSERT INTO activity_log (action,target,detail,user_id) VALUES (?,?,?,?)",
+                     (action, target, "", session.get("user_id")))
         conn.commit()
         conn.close()
     except Exception:
@@ -416,15 +424,11 @@ def log_activity(action, target, detail=""):
 def send_reset_email(to_email, name, reset_link):
     """
     Sends the password reset link via SMTP if MAIL_* env vars are configured.
-    If email is not configured (e.g. local dev), the link is printed to the
-    server log instead so the flow can still be tested end-to-end.
+    Reset bearer tokens are never written to application logs.
     """
     if not MAIL_ENABLED:
-        print("=" * 60)
-        print(f"[PASSWORD RESET] Email not configured — link for {to_email}:")
-        print(reset_link)
-        print("=" * 60)
-        return True
+        app.logger.warning("Password reset email is not configured; no link was logged.")
+        return False
 
     import smtplib
     from email.mime.text import MIMEText
@@ -450,7 +454,7 @@ If you didn't request this, you can safely ignore this email.
         html_body = f"""
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto">
           <h2 style="color:#2E7D32">🌱 Reset your password</h2>
-          <p>Hi {name},</p>
+          <p>Hi {_esc(name)},</p>
           <p>We received a request to reset your GreenField password.
           Click the button below (valid for 1 hour):</p>
           <p style="text-align:center;margin:28px 0">
@@ -471,8 +475,7 @@ If you didn't request this, you can safely ignore this email.
             server.sendmail(MAIL_USERNAME, to_email, msg.as_string())
         return True
     except Exception as e:
-        print(f"[PASSWORD RESET] Email send failed: {e}")
-        print(f"[PASSWORD RESET] Fallback link for {to_email}: {reset_link}")
+        app.logger.warning("Password reset email delivery failed.")
         return False
 
 # ══════════════════════════════════════════════════════════════════
@@ -490,11 +493,43 @@ _throttle_lock = threading.Lock()
 _throttle_hits = {}          # key -> [timestamps]
 
 def client_ip():
-    """Render's proxy appends the real client address as the LAST X-Forwarded-For entry."""
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[-1].strip()[:64]
+    # Enable only for a Render service whose public ingress goes through its edge.
+    # Render documents that its Cloudflare edge overwrites CF-Connecting-IP.
+    if os.environ.get("TRUST_RENDER_PROXY") == "1":
+        import ipaddress
+        value = request.headers.get("CF-Connecting-IP", "")
+        try:
+            return str(ipaddress.ip_address(value))
+        except ValueError:
+            pass
     return (request.remote_addr or "?")[:64]
+
+
+def rate_allow(key, limit, window):
+    """Atomic shared fixed-window quota, works across workers and restarts."""
+    now = time.time()
+    key = hashlib.sha256(key.encode()).hexdigest()
+    conn = get_db()
+    try:
+        row = conn.execute("""INSERT INTO security_limits (key,hits,expires) VALUES (?,1,?)
+            ON CONFLICT (key) DO UPDATE SET
+              hits=CASE WHEN security_limits.expires<=? THEN 1 ELSE security_limits.hits+1 END,
+              expires=CASE WHEN security_limits.expires<=? THEN ? ELSE security_limits.expires END
+            RETURNING hits""", (key, now + window, now, now, now + window)).fetchone()
+        conn.execute("DELETE FROM security_limits WHERE expires<?", (now,))
+        conn.commit()
+        return row[0] <= limit
+    finally:
+        conn.close()
+
+
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
+
+app.jinja_env.globals["csrf_token"] = csrf_token
+
 
 def throttle_blocked(key, limit, window):
     """True if `key` already has `limit` hits within `window` seconds (read-only check)."""
@@ -541,14 +576,12 @@ def check_session_version():
         row = conn.execute("SELECT sess_ver FROM users WHERE id=?", (session["user_id"],)).fetchone()
         conn.close()
     except Exception:
-        return None                                   # never lock people out because of a DB hiccup
+        return jsonify({"error": "Authentication temporarily unavailable."}), 503
     if not row:
         session.clear()
         return None
     cur = int(row["sess_ver"] or 0)
-    if "sv" not in session:
-        session["sv"] = cur                           # sessions that pre-date this feature adopt the current version
-    elif session["sv"] != cur:
+    if session.get("sv") != cur:
         session.clear()
         if request.path.startswith("/api/"):
             return jsonify({"error": "Session expired. Please log in again."}), 401
@@ -563,14 +596,84 @@ def bump_sessions(conn, uid):
 
 @app.before_request
 def csrf_origin_check():
-    """CSRF defence: a state-changing browser request must come from this same site."""
-    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-        src = request.headers.get("Origin") or request.headers.get("Referer")
-        if src:
-            if urlparse(src).netloc.lower() != request.host.lower():
-                return jsonify({"error": "Blocked: cross-site request."}), 403
-        elif request.headers.get("Sec-Fetch-Site") == "cross-site":
-            return jsonify({"error": "Blocked: cross-site request."}), 403
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    # This non-browser route authenticates solely with its own secret header.
+    if request.endpoint == "api_cron_alerts":
+        return None
+    src = request.headers.get("Origin") or request.headers.get("Referer")
+    if src and (urlsplit(src).scheme, urlsplit(src).netloc.lower()) != (urlsplit(APP_BASE_URL).scheme if _PRODUCTION else request.scheme, request.host.lower()):
+        return jsonify({"error": "Blocked: cross-site request."}), 403
+    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+        return jsonify({"error": "Blocked: cross-site request."}), 403
+    supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token", "")
+    expected = session.get("csrf_token", "")
+    if not expected or not isinstance(supplied, str) or not hmac.compare_digest(expected, supplied):
+        return jsonify({"error": "Invalid CSRF token. Reload this page and try again."}), 403
+
+
+@app.before_request
+def validate_input():
+    """Reject malformed structures and unbounded numeric/date fields before handlers run."""
+    if request.method != "POST" or request.endpoint == "api_cron_alerts":
+        return None
+    data = request.get_json(silent=True) if request.is_json else request.form
+    if data is None or not hasattr(data, "items"):
+        abort(400)
+    numeric = {"area": (0.000001, 10000000), "amount": (0.000001, 1e12),
+               "water_liters": (0, 1e12), "duration_min": (0, 1000000),
+               "expected_days": (1, 36500), "farm_id": (0, 2147483647), "price": (0.000001, 1e9)}
+    integer_fields = {"duration_min", "expected_days", "farm_id"}
+    for key, value in data.items():
+        if request.endpoint == "api_push_subscribe" and key in ("keys", "expirationTime"):
+            continue
+        if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+            abort(400)
+        if key not in numeric and not isinstance(value, str):
+            abort(400)
+        if key in numeric and value == "" and key != "farm_id":
+            abort(400)
+        if key in numeric and value != "":
+            try:
+                n = float(value); low, high = numeric[key]
+                if not math.isfinite(n) or not low <= n <= high or (key in integer_fields and not n.is_integer()):
+                    abort(400)
+            except (ValueError, TypeError, OverflowError):
+                abort(400)
+        if key in ("date", "planting_date") and value:
+            try:
+                datetime.strptime(str(value), "%Y-%m-%d")
+            except ValueError:
+                abort(400)
+        if isinstance(value, str):
+            maxlen = 90000 if key == "thumb" else (1000 if "password" in key or key in ("password", "confirm", "new_password") else 4000)
+            if len(value) > maxlen:
+                abort(400)
+    if request.endpoint in ("register", "login", "forgot_password") and data.get("email"):
+        if len(data["email"]) > 200 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", data["email"]):
+            abort(400)
+    if request.endpoint == "profile" and data.get("avatar_color"):
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", data["avatar_color"]):
+            abort(400)
+    if request.endpoint in ("add_growth", "add_irrigation", "add_expense"):
+        conn = get_db()
+        try:
+            own = conn.execute("SELECT 1 FROM farms WHERE id=? AND user_id=?",
+                               (data.get("farm_id") or 0, session.get("user_id", 0))).fetchone()
+        finally:
+            conn.close()
+        if not own:
+            abort(404)
+    if request.endpoint in ("register", "login", "forgot_password", "reset_password"):
+        limit, window = (30, 900) if request.endpoint == "login" else (10, 3600)
+        if not rate_allow(request.endpoint + ":ip:" + client_ip(), limit, window):
+            return jsonify({"error": "Too many attempts. Please try later."}), 429
+        if request.endpoint == "login" and not rate_allow("auth:email:" + data.get("email", "").strip().lower(), 10, 900):
+            return jsonify({"error": "Too many attempts. Please try later."}), 429
+    if request.endpoint in ("api_disease_image", "api_push_test", "api_push_subscribe") and session.get("user_id"):
+        limit, window = {"api_disease_image": (12, 3600), "api_push_test": (1, 20), "api_push_subscribe": (20, 3600)}[request.endpoint]
+        if not rate_allow(request.endpoint + ":" + str(session["user_id"]), limit, window):
+            return jsonify({"error": "Rate limit reached. Please try later."}), 429
 
 @app.after_request
 def security_headers(resp):
@@ -578,6 +681,11 @@ def security_headers(resp):
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)")
+    if request.endpoint != "static" and request.endpoint != "offline_page":
+        resp.headers["Cache-Control"] = "private, no-store"
+    if request.path.startswith("/reset-password/"):
+        resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers.setdefault("Content-Security-Policy", "object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'")
     if _IS_HTTPS:
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return resp
@@ -622,6 +730,7 @@ def inject_user():
         avatar_url = url_for("avatar", uid=user["id"], v=ver)
     return {
         "current_user": user,
+        "fertilizer_rates": {k: {**v, "notes": "General estimate; confirm with a local agriculture officer."} for k, v in CROP_NPK.items()},
         "lang": lang,
         "is_bn": lang == "bn",
         "avatar_url": avatar_url,
@@ -819,8 +928,10 @@ def register():
                     (name, email, generate_password_hash(password))
                 )
                 conn.commit()
-                user = conn.execute("SELECT id,name FROM users WHERE email=?",(email,)).fetchone()
+                user = conn.execute("SELECT id,name,sess_ver FROM users WHERE email=?",(email,)).fetchone()
                 ensure_account_id(conn, user["id"])
+                session.clear()
+                session["sv"] = int(user["sess_ver"] or 0)
                 session["user_id"]   = user["id"]
                 session["user_name"] = user["name"]
                 conn.close()
@@ -856,6 +967,7 @@ def login():
             session.clear()
             if _lang: session["lang"] = _lang
             session.permanent = True
+            session["sv"] = int(user["sess_ver"] or 0)
             session["user_id"]   = user["id"]
             session["user_name"] = user["name"]
             flash(f"👋 Welcome back, <strong>{_esc(user['name'])}</strong>!", "success")
@@ -864,8 +976,10 @@ def login():
         flash("Invalid email or password. Please try again.", "error")
     return render_template("login.html", google_enabled=GOOGLE_OAUTH_ENABLED)
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
+    if request.method == "GET":
+        return render_template("logout.html")
     _lang = session.get("lang")
     session.clear()
     if _lang: session["lang"] = _lang
@@ -892,6 +1006,9 @@ def google_callback():
         if not user_info:
             flash("Could not get user info from Google.", "error")
             return redirect(url_for("login"))
+        if not user_info.get("sub") or not user_info.get("email") or user_info.get("email_verified") is not True:
+            flash("Google must provide a verified email address.", "error")
+            return redirect(url_for("login"))
         google_id = user_info.get("sub", "")
         email     = user_info.get("email", "").lower()
         name      = user_info.get("name", "Google User")
@@ -904,10 +1021,15 @@ def google_callback():
         ).fetchone()
 
         if existing:
-            # Update google_id if logging in with Google for the first time on existing account
+            if existing["google_id"] and existing["google_id"] != google_id:
+                conn.close()
+                flash("Google account does not match the linked account.", "error")
+                return redirect(url_for("login"))
+            # Link only a verified Google identity.
             if not existing["google_id"]:
-                conn.execute("UPDATE users SET google_id=? WHERE id=?", (google_id, existing["id"]))
-                conn.commit()
+                conn.close()
+                flash("This email has a password account. Sign in with your password or reset it; automatic Google linking is disabled.", "error")
+                return redirect(url_for("login"))
             uid  = existing["id"]
             uname = existing["name"]
         else:
@@ -923,7 +1045,13 @@ def google_callback():
             uid   = new_user["id"]
             uname = new_user["name"]
 
+        version = conn.execute("SELECT sess_ver FROM users WHERE id=?", (uid,)).fetchone()[0]
         conn.close()
+        lang = session.get("lang", "en")
+        session.clear()
+        session["lang"] = lang
+        session["sv"] = int(version or 0)
+        session.permanent = True
         session["user_id"]   = uid
         session["user_name"] = uname
         session["user_email"]= email
@@ -1005,6 +1133,11 @@ def reset_password(token):
         elif new_pw != confirm:
             flash("Passwords do not match.", "error")
         else:
+            claimed = conn.execute("UPDATE password_resets SET used=1 WHERE id=? AND used=0 RETURNING id",
+                                   (reset_row["id"],)).fetchone()
+            if not claimed:
+                conn.rollback(); conn.close()
+                return redirect(url_for("forgot_password"))
             conn.execute(
                 "UPDATE users SET password=? WHERE id=?",
                 (generate_password_hash(new_pw), reset_row["user_id"])
@@ -1062,7 +1195,9 @@ def profile():
             elif conn.execute("SELECT id FROM users WHERE email=? AND id!=?", (new_email, uid)).fetchone():
                 flash("That email is already in use.", "error")
             else:
-                conn.execute("UPDATE users SET email=? WHERE id=?", (new_email, uid))
+                conn.execute("UPDATE users SET email=?,google_id='' WHERE id=?", (new_email, uid))
+                session["sv"] = bump_sessions(conn, uid)
+                conn.execute("DELETE FROM password_resets WHERE user_id=?", (uid,))
                 conn.commit()
                 session["user_email"] = new_email
                 flash("✅ Email updated.", "success")
@@ -1082,6 +1217,7 @@ def profile():
                 conn.execute("UPDATE users SET password=? WHERE id=?",
                              (generate_password_hash(new_pw), uid))
                 session["sv"] = bump_sessions(conn, uid)      # other devices are signed out, this one stays
+                conn.execute("DELETE FROM password_resets WHERE user_id=?", (uid,))
                 conn.commit()
                 log_activity("updated","profile","Password changed")
                 flash("✅ Password changed.", "success")
@@ -1097,11 +1233,23 @@ def profile():
                     if len(photo_bytes) >= 5 * 1024 * 1024:
                         flash("Image too large. Maximum size is 5 MB.", "error")
                     else:
-                        b64 = base64.b64encode(photo_bytes).decode("utf-8")
-                        data_url = f"data:{photo.content_type};base64,{b64}"
-                        conn.execute("UPDATE users SET avatar_photo=? WHERE id=?", (data_url, uid))
-                        conn.commit()
-                        flash("✅ Profile photo updated.", "success")
+                        try:
+                            from PIL import Image
+                            import io
+                            with Image.open(io.BytesIO(photo_bytes)) as im:
+                                if im.width * im.height > 16000000:
+                                    raise ValueError("Too many pixels")
+                                im.load()
+                                im.thumbnail((512, 512))
+                                clean = io.BytesIO()
+                                im.convert("RGB").save(clean, format="JPEG", quality=85)
+                            b64 = base64.b64encode(clean.getvalue()).decode("ascii")
+                            conn.execute("UPDATE users SET avatar_photo=? WHERE id=?",
+                                         ("data:image/jpeg;base64," + b64, uid))
+                            conn.commit()
+                            flash("✅ Profile photo updated.", "success")
+                        except (OSError, ValueError, Image.DecompressionBombError):
+                            flash("Invalid image or image dimensions too large.", "error")
             else:
                 flash("No photo selected.", "error")
 
@@ -1119,11 +1267,11 @@ def profile():
             elif confirm_txt.strip().upper() != "DELETE":
                 flash("Type DELETE to confirm account deletion.", "error")
             else:
-                # Manually cascade — remove all data linked to this account first
-                conn.execute("DELETE FROM disease_scans WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM crop_notes WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM farms WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM fertilizer_history WHERE user_id=?", (uid,))
+                # Explicitly remove every owned table; legacy schema has no FK cascades.
+                for table in ("disease_scans", "crop_notes", "crop_growth", "irrigation_log",
+                              "expense_log", "fertilizer_history", "password_resets",
+                              "push_subs", "push_log", "price_history", "activity_log", "farms"):
+                    conn.execute(f"DELETE FROM {table} WHERE user_id=?", (uid,))
                 conn.execute("DELETE FROM users WHERE id=?", (uid,))
                 conn.commit()
                 conn.close()
@@ -1170,7 +1318,7 @@ def dashboard():
         "SELECT * FROM farms WHERE user_id=? ORDER BY created_at DESC LIMIT 5",(uid,)).fetchall()
     recent_notes = conn.execute("""
         SELECT cn.title,cn.note,cn.category,cn.created_at,f.farm_name
-        FROM crop_notes cn JOIN farms f ON cn.farm_id=f.id
+        FROM crop_notes cn JOIN farms f ON cn.farm_id=f.id AND f.user_id=cn.user_id
         WHERE cn.user_id=? ORDER BY cn.created_at DESC LIMIT 5""",(uid,)).fetchall()
     crop_dist = conn.execute(
         "SELECT crop_type,COUNT(*) as cnt FROM farms WHERE user_id=? GROUP BY crop_type",(uid,)).fetchall()
@@ -1250,7 +1398,8 @@ def delete_farm(fid):
         conn.close(); flash("Farm not found or access denied.","error")
         return redirect(url_for("farms"))
     # Manually cascade — remove this farm's notes first, then the farm itself
-    conn.execute("DELETE FROM crop_notes WHERE farm_id=? AND user_id=?",(fid,uid))
+    for table in ("crop_notes", "crop_growth", "irrigation_log", "expense_log", "disease_scans"):
+        conn.execute(f"DELETE FROM {table} WHERE farm_id=? AND user_id=?", (fid, uid))
     conn.execute("DELETE FROM farms WHERE id=? AND user_id=?",(fid,uid))
     conn.commit(); conn.close()
     flash(f"🗑️ Farm <strong>{_esc(row['farm_name'])}</strong> deleted.", "success")
@@ -1265,7 +1414,7 @@ def notes():
         "SELECT id,farm_name FROM farms WHERE user_id=? ORDER BY farm_name",(uid,)).fetchall()
     rows=conn.execute("""
         SELECT cn.id,cn.title,cn.note,cn.category,cn.created_at,f.farm_name,f.id as farm_id
-        FROM crop_notes cn JOIN farms f ON cn.farm_id=f.id
+        FROM crop_notes cn JOIN farms f ON cn.farm_id=f.id AND f.user_id=cn.user_id
         WHERE cn.user_id=? ORDER BY cn.created_at DESC""",(uid,)).fetchall()
     conn.close()
     return render_template("notes.html", notes=rows, farms=farm_list)
@@ -1645,7 +1794,7 @@ def growth_page():
     ).fetchall()
     growth_records = conn.execute(
         f"""SELECT g.*, f.farm_name, f.crop_type FROM crop_growth g
-            JOIN farms f ON g.farm_id=f.id
+            JOIN farms f ON g.farm_id=f.id AND f.user_id=g.user_id
             WHERE g.user_id={ph} ORDER BY g.created_at DESC""", (uid,)
     ).fetchall()
     conn.close()
@@ -1723,7 +1872,7 @@ def irrigation_page():
     ).fetchall()
     logs = conn.execute(
         f"""SELECT i.*, f.farm_name FROM irrigation_log i
-            JOIN farms f ON i.farm_id=f.id
+            JOIN farms f ON i.farm_id=f.id AND f.user_id=i.user_id
             WHERE i.user_id={ph} ORDER BY i.date DESC LIMIT 50""", (uid,)
     ).fetchall()
     # Weather suggestion
@@ -1833,12 +1982,12 @@ def expenses_page():
     farm_id_filter = request.args.get("farm_id", "")
     if farm_id_filter:
         logs = conn.execute(
-            f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
+            f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id AND f.user_id=e.user_id
                 WHERE e.user_id={ph} AND e.farm_id={ph} ORDER BY e.date DESC""", (uid, farm_id_filter)
         ).fetchall()
     else:
         logs = conn.execute(
-            f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
+            f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id AND f.user_id=e.user_id
                 WHERE e.user_id={ph} ORDER BY e.date DESC LIMIT 100""", (uid,)
         ).fetchall()
     # Summary
@@ -2149,15 +2298,15 @@ def report_page():
         f"SELECT * FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
     ).fetchall()
     growth = conn.execute(
-        f"""SELECT g.*, f.farm_name FROM crop_growth g JOIN farms f ON g.farm_id=f.id
+        f"""SELECT g.*, f.farm_name FROM crop_growth g JOIN farms f ON g.farm_id=f.id AND f.user_id=g.user_id
             WHERE g.user_id={ph} ORDER BY g.created_at DESC LIMIT 20""", (uid,)
     ).fetchall()
     irrigations = conn.execute(
-        f"""SELECT i.*, f.farm_name FROM irrigation_log i JOIN farms f ON i.farm_id=f.id
+        f"""SELECT i.*, f.farm_name FROM irrigation_log i JOIN farms f ON i.farm_id=f.id AND f.user_id=i.user_id
             WHERE i.user_id={ph} ORDER BY i.date DESC LIMIT 20""", (uid,)
     ).fetchall()
     expenses = conn.execute(
-        f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id
+        f"""SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id AND f.user_id=e.user_id
             WHERE e.user_id={ph} ORDER BY e.date DESC LIMIT 50""", (uid,)
     ).fetchall()
     # Totals must cover ALL entries - the list above is only the latest 50 rows.
@@ -2212,7 +2361,8 @@ def api_errors_as_json(e):
         return jsonify({"error": f"Server error ({code}). Please try again."}), code
     if isinstance(e, HTTPException):
         return e
-    raise e
+    app.logger.error("Unhandled application error: %s", type(e).__name__)
+    return "Something went wrong. Please try again.", 500
 
 @app.route("/offline")
 def offline_page():
@@ -2298,22 +2448,10 @@ def _save_scan(uid, result, crop, farm_id, thumb, lang, photo_key=""):
 @login_required
 def api_disease_history():
     conn = get_db()
-    # one-time tidy of older duplicates (same photo scanned several times): keep only the newest
-    seen = {}
-    for r in conn.execute("SELECT id, thumb, photo_key FROM disease_scans WHERE user_id=? ORDER BY id DESC",
-                          (session["user_id"],)).fetchall():
-        key = (r["photo_key"] or r["thumb"] or "")
-        if not key:
-            continue
-        if key in seen:
-            conn.execute("DELETE FROM disease_scans WHERE id=? AND user_id=?", (r["id"], session["user_id"]))
-        else:
-            seen[key] = r["id"]
-    conn.commit()
     rows = conn.execute(
         """SELECT d.id, d.crop, d.diagnosis, d.health_status, d.confidence, d.severity, d.thumb, d.created_at,
                   d.farm_id, f.farm_name
-           FROM disease_scans d LEFT JOIN farms f ON f.id=d.farm_id
+           FROM disease_scans d LEFT JOIN farms f ON f.id=d.farm_id AND f.user_id=d.user_id
            WHERE d.user_id=? ORDER BY d.id DESC LIMIT 30""", (session["user_id"],)).fetchall()
     conn.close()
     return jsonify([{k: r[k] for k in ("id", "crop", "diagnosis", "health_status", "confidence", "severity",
@@ -2470,6 +2608,12 @@ def api_today_tasks():
 # ══════════════════════════════════════════════════════════════════
 #  DOWNLOAD MY DATA  (own data only, JSON)
 # ══════════════════════════════════════════════════════════════════
+@app.route("/api/session-owner")
+@login_required
+def api_session_owner():
+    return jsonify({"user_id": session["user_id"]})
+
+
 @app.route("/account/export")
 @login_required
 def export_my_data():
@@ -2512,6 +2656,32 @@ def api_push_key():
         return jsonify({"enabled": False}), 200
     return jsonify({"enabled": True, "key": VAPID_PUBLIC_KEY})
 
+def valid_push_subscription(sub):
+    try:
+        endpoint = sub["endpoint"]
+        if not isinstance(endpoint, str) or len(endpoint) > 1000:
+            return False
+        u = urlsplit(endpoint)
+        allowed = {"fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com"}
+        if u.scheme != "https" or u.hostname not in allowed or u.port not in (None, 443) or u.username or u.password or u.fragment:
+            return False
+        keys = sub.get("keys", sub)
+        if not isinstance(keys, dict):
+            return False
+        def decode(value):
+            if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", value):
+                raise ValueError
+            return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        pub, auth = decode(keys["p256dh"]), decode(keys["auth"])
+        if len(pub) != 65 or len(auth) != 16:
+            return False
+        from cryptography.hazmat.primitives.asymmetric import ec
+        ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), pub)
+        return True
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 @app.route("/api/push/subscribe", methods=["POST"])
 @login_required
 def api_push_subscribe():
@@ -2519,13 +2689,18 @@ def api_push_subscribe():
         return jsonify({"error": "Alerts are not configured on this server."}), 503
     b = request.get_json(silent=True) or {}
     ep, keys = (b.get("endpoint") or ""), (b.get("keys") or {})
-    if not ep.startswith("https://") or not keys.get("p256dh") or not keys.get("auth") or len(ep) > 1000:
+    if not valid_push_subscription(b):
         return jsonify({"error": "Invalid subscription."}), 400
     uid = session["user_id"]
     conn = get_db()
-    conn.execute("DELETE FROM push_subs WHERE endpoint=?", (ep,))
-    conn.execute("INSERT INTO push_subs (user_id,endpoint,p256dh,auth,lang) VALUES (?,?,?,?,?)",
-                 (uid, ep, keys["p256dh"][:200], keys["auth"][:100], session.get("lang", "en")))
+    # Never transfer a different user's subscription based only on endpoint knowledge.
+    saved = conn.execute("""INSERT INTO push_subs (user_id,endpoint,p256dh,auth,lang) VALUES (?,?,?,?,?)
+        ON CONFLICT (endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,lang=excluded.lang
+        WHERE push_subs.user_id=excluded.user_id RETURNING id""",
+        (uid, ep, keys["p256dh"], keys["auth"], session.get("lang", "en"))).fetchone()
+    if not saved:
+        conn.rollback(); conn.close()
+        return jsonify({"error": "Subscription already belongs to another account. Re-enable notifications."}), 409
     conn.commit(); conn.close()
     return jsonify({"ok": True})
 
@@ -2569,14 +2744,22 @@ def api_push_test():
 
 def send_push(sub, payload):
     """Send one notification. Returns 'ok', 'gone' (subscription expired) or 'error'."""
+    if not valid_push_subscription(sub):
+        return "gone"
     try:
         from pywebpush import webpush, WebPushException
     except Exception:
         return "error"
     try:
+        import requests
+        class NoRedirectSession(requests.Session):
+            def request(self, method, url, **kwargs):
+                kwargs["allow_redirects"] = False
+                return super().request(method, url, **kwargs)
         webpush(subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
                 data=json.dumps(payload, ensure_ascii=False), vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": VAPID_SUBJECT}, ttl=6 * 3600)
+                vapid_claims={"sub": VAPID_SUBJECT}, ttl=6 * 3600,
+                timeout=10, requests_session=NoRedirectSession())
         return "ok"
     except WebPushException as e:
         code = getattr(getattr(e, "response", None), "status_code", None)
@@ -2631,6 +2814,6 @@ init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_ENV", "development") != "production"
+    debug = os.environ.get("FLASK_DEBUG") == "1" and not _PRODUCTION
     print(f"🌱  GreenField → http://127.0.0.1:{port}")
-    app.run(debug=debug, host="0.0.0.0", port=port)
+    app.run(debug=debug, host="127.0.0.1", port=port)

@@ -7,3 +7,6 @@ threads = 4            # several requests at once, so a slow AI call does not bl
 timeout = 120
 graceful_timeout = 30
 preload_app = True     # initialise the DB once at boot -> faster wake-up
+
+# Do not include request paths, query strings or Referer: reset URLs carry bearer tokens.
+access_log_format = '%(h)s %(t)s "%(m)s" %(s)s %(b)s %(L)s'

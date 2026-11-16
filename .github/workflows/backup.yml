@@ -2,6 +2,8 @@ name: Nightly DB backup
 on:
   schedule: [{ cron: "30 20 * * *" }]   # 02:30 Bangladesh time
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   backup:
     runs-on: ubuntu-latest
@@ -10,10 +12,14 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        shell: bash
         run: |
-          if [ -z "$DB_URL" ] || [ -z "$PASS" ]; then echo "Secrets not set - skipping."; exit 0; fi
+          set -euo pipefail
+          trap 'rm -f backup.sql.gz' EXIT
+          if [ -z "$DB_URL" ] || [ -z "$PASS" ]; then echo "Backup configuration missing."; exit 1; fi
           docker run --rm postgres:17 pg_dump --no-owner --no-privileges "$DB_URL" | gzip > backup.sql.gz
-          test -s backup.sql.gz
+          gzip -t backup.sql.gz
+          gzip -dc backup.sql.gz | awk 'BEGIN { found=0 } length($0) { found=1 } END { exit !found }'
           gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "greenfield-$(date +%F).sql.gz.gpg" backup.sql.gz
           rm backup.sql.gz
       - uses: actions/upload-artifact@v4
@@ -21,4 +27,4 @@ jobs:
           name: db-backup
           path: greenfield-*.gpg
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: error
