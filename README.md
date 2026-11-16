@@ -6,6 +6,43 @@ A full-stack smart farming web application designed to help farmers manage farms
 
 **GitHub Repository:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
+[![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.0-lightgrey) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+
+> Screenshots below use demo data, not a real farmer's records.
+
+| Dashboard + Today's Tasks | Mobile (installable PWA) |
+| --- | --- |
+| ![Dashboard](docs/screenshots/dashboard.png) | <img src="docs/screenshots/dashboard-mobile.png" width="260" alt="Mobile dashboard"> |
+
+| Expenses & profit/loss | Market prices (record what you saw) |
+| --- | --- |
+| ![Expenses](docs/screenshots/expenses.png) | ![Market](docs/screenshots/market.png) |
+
+| Farm report (print / save as PDF) | Crop disease detector |
+| --- | --- |
+| ![Report](docs/screenshots/report.png) | ![Disease detector](docs/screenshots/disease.png) |
+
+## 🚀 Highlights
+
+* **Today's Tasks** - rule-based, crop-aware to-do list (irrigation, top-dressing, harvest window, fungal risk, rain/heat alerts) built from general Bangladesh crop guidance and the OpenWeather forecast. It says when the forecast is unavailable instead of guessing.
+* **Push alerts** - Web Push (VAPID) notifications for rain, heat, fungal-risk and harvest alerts, sent by a GitHub Actions job every 3 hours; de-duplicated per day; one-tap test alert.
+* **AI crop-disease photo check** - Gemini vision with a two-model cross-check, multi-photo scans and deliberately humble confidence labels. It is a hint, not a diagnosis (see limitations).
+* **Money tracking** - income/expense log with per-farm profit & loss, monthly trend and cost breakdown.
+* **Market prices you can trust** - labelled reference values plus prices *you* record; trends are shown only when there is enough real data.
+* **Farm report** - totals, per-farm P&L and today's outlook, printable / save as PDF; full **data export** of your account.
+* **Bangla + English** UI, dark mode, installable offline-friendly PWA.
+* **Engineering** - CSRF (Origin/Referer) protection, login throttling, hashed one-time reset tokens, other devices signed out on password change, security headers; pytest suite run by GitHub Actions on every push; nightly encrypted PostgreSQL backup (pg_dump + AES-256 GPG) kept as a workflow artifact for 30 days; keep-alive workflow for the free hosting tier.
+
+## ⚠️ Honest limitations
+
+* The disease detector is an AI guess. In an informal test it was right on only about 57% of clean lab photos and can answer differently on a repeat run; always confirm with a local agriculture officer.
+* Market prices are not live: the government source (DAM) publishes daily prices only as downloadable files, so the app shows approximate reference values and the prices users record themselves.
+* Task rules are general guidance, not field-specific advice.
+* Free hosting sleeps when idle (first load can take ~30-50 s); the keep-alive job reduces this.
+* The nightly backup runs, but restoring from it has not been tested yet.
+* Reports use the browser's print / save-as-PDF rather than server-generated PDFs.
+
 ---
 
 ## 📌 Overview
@@ -145,7 +182,10 @@ Users can:
 | Weather API          | OpenWeather API                  |
 | Maps                 | Leaflet.js                       |
 | Geocoding            | Nominatim                        |
-| Authentication       | Flask Sessions, Werkzeug         |
+| Authentication       | Flask Sessions, Werkzeug, Google OAuth (Authlib) |
+| AI                   | Google Gemini vision API         |
+| Push                 | Web Push / VAPID (pywebpush)     |
+| CI & automation      | GitHub Actions (pytest, backups, alerts) |
 | Password Security    | Werkzeug Password Hashing        |
 | Web Server           | Gunicorn                         |
 | Deployment           | Render                           |
@@ -242,6 +282,10 @@ GreenField includes several basic security measures:
 * Expiring password reset tokens
 * One-time password reset tokens
 * Environment variables for sensitive configuration
+* CSRF protection by Origin/Referer checking on state-changing requests
+* Login throttling (HTTP 429 after repeated failures)
+* Reset tokens stored hashed; other devices signed out when the password changes
+* Security headers and a minimum 8-character password
 * Database separation between users
 
 Sensitive values such as API keys and production database credentials should be stored in environment variables rather than committed to GitHub.
@@ -544,18 +588,13 @@ Configured the production environment with the OpenWeather API key and fallback 
 
 Possible future improvements include:
 
-* AI-based crop recommendations
-* Crop disease detection using computer vision
-* Soil condition monitoring
-* IoT sensor integration
-* Automated irrigation monitoring
-* Fertilizer recommendation based on soil data
-* Crop yield prediction
-* Advanced farm reports
-* Push notifications
-* Multi-language support
+* Measure and improve disease-detection accuracy on real field photos
+* A tested restore procedure for the nightly backups
+* SMS alerts (needs a paid gateway) in addition to push notifications
+* Server-generated PDF reports with Bangla fonts
+* Soil condition monitoring and IoT sensor integration
+* Yield prediction and fertilizer recommendation based on soil data
 * Role-based access for farmers and administrators
-* Automated backup and recovery
 * More detailed farm analytics
 
 ---
