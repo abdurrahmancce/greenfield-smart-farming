@@ -122,6 +122,8 @@ def fetch_forecast(city, api_key, requests_mod, ttl=1800):
         data = summarize_forecast(r.json().get("list")) if r.status_code == 200 else None
     except Exception:
         data = None
+    if len(_fc_cache) > 500:
+        _fc_cache.clear()
     _fc_cache[k] = (time.time(), data)
     return data
 

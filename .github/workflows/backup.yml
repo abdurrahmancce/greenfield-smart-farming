@@ -2,23 +2,44 @@ name: Nightly DB backup
 on:
   schedule: [{ cron: "30 20 * * *" }]   # 02:30 Bangladesh time
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
+      # Backups hold every user's data. This repository is PUBLIC, so the uploaded file is
+      # downloadable by any GitHub user - it must be unreadable without a key only you hold.
+      #   Best:   BACKUP_AGE_PUBKEY  (age public key; the private key never leaves your computer)
+      #   Else:   BACKUP_PASSPHRASE  (at least 24 random characters)
       - name: Dump, encrypt, store
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+          AGE_PUB: ${{ secrets.BACKUP_AGE_PUBKEY }}
         run: |
-          if [ -z "$DB_URL" ] || [ -z "$PASS" ]; then echo "Secrets not set - skipping."; exit 0; fi
+          set -euo pipefail
+          if [ -z "$DB_URL" ] || { [ -z "$PASS" ] && [ -z "$AGE_PUB" ]; }; then
+            echo "::error::Backup NOT made: set SUPABASE_DB_URL and BACKUP_AGE_PUBKEY (or BACKUP_PASSPHRASE) in Settings > Secrets."
+            exit 1
+          fi
           docker run --rm postgres:17 pg_dump --no-owner --no-privileges "$DB_URL" | gzip > backup.sql.gz
           test -s backup.sql.gz
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "greenfield-$(date +%F).sql.gz.gpg" backup.sql.gz
-          rm backup.sql.gz
+          OUT="greenfield-$(date +%F).sql.gz"
+          if [ -n "$AGE_PUB" ]; then
+            sudo apt-get install -y -qq age >/dev/null
+            age -r "$AGE_PUB" -o "$OUT.age" backup.sql.gz
+          else
+            if [ "${#PASS}" -lt 24 ]; then echo "::error::BACKUP_PASSPHRASE is too short (need 24+ characters) - a public-repo backup could be cracked."; exit 1; fi
+            printf '%s' "$PASS" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+                --symmetric --cipher-algo AES256 --s2k-mode 3 --s2k-count 65011712 -o "$OUT.gpg" backup.sql.gz
+          fi
+          shred -u backup.sql.gz 2>/dev/null || rm -f backup.sql.gz
       - uses: actions/upload-artifact@v4
         with:
           name: db-backup
-          path: greenfield-*.gpg
-          retention-days: 30
-          if-no-files-found: ignore
+          path: |
+            greenfield-*.age
+            greenfield-*.gpg
+          retention-days: 14
+          if-no-files-found: error

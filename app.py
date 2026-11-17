@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (Flask, render_template, request, redirect,
-                   url_for, jsonify, flash, session, Response, abort)
+                   url_for, jsonify, flash, session, Response, abort,
+                   g, has_request_context)
 import i18n
 import vision
 import farm_tasks
@@ -35,7 +36,7 @@ MAIL_ENABLED  = bool(MAIL_SERVER and MAIL_USERNAME and MAIL_PASSWORD)
 APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024   # photo uploads (profile photo / disease photo)
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024    # photo uploads (profile photo / disease photo)
 _sk = os.environ.get("SECRET_KEY", "")
 if not _sk:
     # No SECRET_KEY configured: never fall back to a key that is public in the source code.
@@ -46,7 +47,8 @@ if not _sk:
         _sk = secrets.token_hex(32)                                              # local dev: fresh per start
     print("[security] SECRET_KEY not set - derived a private key. Set SECRET_KEY in the environment.")
 app.secret_key = _sk
-_IS_HTTPS = os.environ.get("APP_BASE_URL", "").startswith("https://")
+_IS_HTTPS = os.environ.get("APP_BASE_URL", "").startswith("https://") or bool(os.environ.get("RENDER"))
+_IS_PROD  = _IS_HTTPS or os.environ.get("FLASK_ENV") == "production"
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -182,15 +184,33 @@ class _CursorWrapper:
 
 def get_db():
     """Returns a connection object. Same .execute()/.commit()/.close()
-    interface regardless of which database backend is active."""
+    interface regardless of which database backend is active.
+    Every connection opened during a web request is closed again when the request ends,
+    even if the view crashed (otherwise errors would leak connections / keep DB locks)."""
     if USE_POSTGRES:
-        raw = psycopg2.connect(DATABASE_URL)
-        return PGConnWrapper(raw)
+        conn = PGConnWrapper(psycopg2.connect(DATABASE_URL))
     else:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.execute("PRAGMA foreign_keys = ON")
         conn.row_factory = sqlite3.Row
-        return conn
+    try:
+        if has_request_context():
+            g.setdefault("_gf_conns", []).append(conn)
+    except Exception:
+        pass
+    return conn
+
+@app.teardown_request
+def _close_leaked_connections(exc):
+    for c in g.pop("_gf_conns", []):
+        try:
+            c.rollback() if exc else None
+        except Exception:
+            pass
+        try:
+            c.close()
+        except Exception:
+            pass
 
 
 def migrate_db(conn):
@@ -420,8 +440,12 @@ def send_reset_email(to_email, name, reset_link):
     server log instead so the flow can still be tested end-to-end.
     """
     if not MAIL_ENABLED:
+        if _IS_PROD:
+            # A reset link is a password: never write it to production logs.
+            print("[PASSWORD RESET] Email is not configured - no link was sent (set MAIL_* to enable resets).")
+            return False
         print("=" * 60)
-        print(f"[PASSWORD RESET] Email not configured — link for {to_email}:")
+        print(f"[PASSWORD RESET] Email not configured (dev mode) - link for {to_email}:")
         print(reset_link)
         print("=" * 60)
         return True
@@ -471,8 +495,9 @@ If you didn't request this, you can safely ignore this email.
             server.sendmail(MAIL_USERNAME, to_email, msg.as_string())
         return True
     except Exception as e:
-        print(f"[PASSWORD RESET] Email send failed: {e}")
-        print(f"[PASSWORD RESET] Fallback link for {to_email}: {reset_link}")
+        print(f"[PASSWORD RESET] Email send failed: {type(e).__name__}")
+        if not _IS_PROD:
+            print(f"[PASSWORD RESET] Fallback link for {to_email}: {reset_link}")
         return False
 
 # ══════════════════════════════════════════════════════════════════
@@ -556,10 +581,65 @@ def check_session_version():
         return redirect(url_for("login"))
     return None
 
+def sniff_image(b):
+    """Look at the real file bytes (not the client's claim). Returns a MIME type or None."""
+    if b[:3] == b"\xff\xd8\xff": return "image/jpeg"
+    if b[:8] == b"\x89PNG\r\n\x1a\n": return "image/png"
+    if b[:6] in (b"GIF87a", b"GIF89a"): return "image/gif"
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP": return "image/webp"
+    return None
+
 def bump_sessions(conn, uid):
     conn.execute("UPDATE users SET sess_ver=COALESCE(sess_ver,0)+1 WHERE id=?", (uid,))
     r = conn.execute("SELECT sess_ver FROM users WHERE id=?", (uid,)).fetchone()
     return int(r["sess_ver"] or 0)
+
+# ── input validation helpers ──────────────────────────────────────
+import math
+def clip(v, n):
+    """Trim a text input to at most n characters."""
+    return (v or "").strip()[:n] if isinstance(v, str) or v is None else str(v)[:n]
+
+def to_float(v, lo=None, hi=None, default=None):
+    """Parse a finite number inside [lo, hi]; anything else -> default."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(x) or (lo is not None and x < lo) or (hi is not None and x > hi):
+        return default
+    return x
+
+def to_int(v, lo=None, hi=None, default=None):
+    x = to_float(v, lo, hi, None)
+    return default if x is None else int(x)
+
+def valid_date(v):
+    """Return the date as YYYY-MM-DD if it is a real date in a sensible range, else None."""
+    try:
+        d = datetime.strptime((v or "").strip(), "%Y-%m-%d")
+    except ValueError:
+        return None
+    return d.strftime("%Y-%m-%d") if 1990 <= d.year <= 2100 else None
+
+def owned_farm_id(conn, uid, raw):
+    """The farm id as int - but only if it belongs to this user (blocks IDOR), else None."""
+    fid = to_int(raw, 1, 2**31 - 1)
+    if fid is None:
+        return None
+    row = conn.execute("SELECT id FROM farms WHERE id=? AND user_id=?", (fid, uid)).fetchone()
+    return fid if row else None
+
+def delete_user_data(conn, uid):
+    """Remove EVERYTHING that belongs to a user (used by 'delete account')."""
+    u = conn.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+    for t in ("expense_log", "irrigation_log", "crop_growth", "crop_notes", "disease_scans",
+              "fertilizer_history", "push_log", "push_subs", "password_resets", "price_history"):
+        conn.execute(f"DELETE FROM {t} WHERE user_id=?", (uid,))
+    if u and u["email"]:                              # the activity log mentions the e-mail address
+        conn.execute("DELETE FROM activity_log WHERE detail LIKE ?", ("%" + u["email"] + "%",))
+    conn.execute("DELETE FROM farms WHERE user_id=?", (uid,))
+    conn.execute("DELETE FROM users WHERE id=?", (uid,))
 
 @app.before_request
 def csrf_origin_check():
@@ -578,6 +658,10 @@ def security_headers(resp):
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)")
+    resp.headers.setdefault("Content-Security-Policy",
+        "base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'")
+    if request.path.startswith(("/account/", "/profile")) or "attachment" in resp.headers.get("Content-Disposition", ""):
+        resp.headers["Cache-Control"] = "no-store"
     if _IS_HTTPS:
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return resp
@@ -618,7 +702,7 @@ def inject_user():
     avatar_url = ""
     if user and user["avatar_photo"]:
         photo = user["avatar_photo"]
-        ver = hashlib.md5((str(len(photo)) + photo[-200:]).encode()).hexdigest()[:8]
+        ver = hashlib.md5((str(len(photo)) + photo[-200:]).encode(), usedforsecurity=False).hexdigest()[:8]
         avatar_url = url_for("avatar", uid=user["id"], v=ver)
     return {
         "current_user": user,
@@ -709,7 +793,20 @@ def _owm_tip(d):
     if w>=40:  return "Strong winds — delay spraying and secure tall crops."
     return "Conditions look good for field operations today."
 
+_wx_cache = {}
 def get_weather(city="Chittagong"):
+    city = clip(city, 60) or "Chittagong"
+    k = city.lower()
+    hit = _wx_cache.get(k)
+    if hit and time.time() - hit[0] < 600:
+        return dict(hit[1])
+    data = _get_weather_uncached(city)
+    if len(_wx_cache) > 300:
+        _wx_cache.clear()
+    _wx_cache[k] = (time.time(), data)
+    return dict(data)
+
+def _get_weather_uncached(city="Chittagong"):
     import urllib.request, urllib.parse
     if OPENWEATHER_KEY:
         try:
@@ -769,11 +866,11 @@ def get_weather(city="Chittagong"):
             data["tip"] = _owm_tip(data)
             return data
         except Exception as e:
-            m = _mock_weather(city); m["api_error"] = str(e); return m
+            print("[weather] live fetch failed:", type(e).__name__); m = _mock_weather(city); m["api_error"] = True; return m
     return _mock_weather(city)
 
 def _mock_weather(city="Chittagong"):
-    seed = int(hashlib.md5(city.lower().encode()).hexdigest()[:4],16) % 20
+    seed = int(hashlib.md5(city.lower().encode(), usedforsecurity=False).hexdigest()[:4],16) % 20
     cond = ["Partly Cloudy","Sunny","Overcast","Light Rain"][seed%4]
     imap = {"Partly Cloudy":"cloud-sun","Sunny":"sun","Overcast":"cloud","Light Rain":"cloud-rain"}
     t    = 27+seed%8
@@ -823,6 +920,7 @@ def register():
                 ensure_account_id(conn, user["id"])
                 session["user_id"]   = user["id"]
                 session["user_name"] = user["name"]
+                session["sv"]        = 0                  # brand-new account: session version 0
                 conn.close()
                 session.permanent = True
                 flash(f"🌱 Welcome to GreenField, <strong>{_esc(name)}</strong>! Your account is ready.", "success")
@@ -858,6 +956,8 @@ def login():
             session.permanent = True
             session["user_id"]   = user["id"]
             session["user_name"] = user["name"]
+            try: session["sv"] = int(user["sess_ver"] or 0)
+            except Exception: pass
             flash(f"👋 Welcome back, <strong>{_esc(user['name'])}</strong>!", "success")
             return redirect(safe_next(request.args.get("next")) or url_for("dashboard"))
         throttle_hit(k_ip); throttle_hit(k_em)
@@ -894,19 +994,30 @@ def google_callback():
             return redirect(url_for("login"))
         google_id = user_info.get("sub", "")
         email     = user_info.get("email", "").lower()
+        if not google_id or not email or user_info.get("email_verified") is not True:
+            flash("Your Google email is not verified, so we cannot sign you in with it.", "error")
+            return redirect(url_for("login"))
         name      = user_info.get("name", "Google User")
         picture   = user_info.get("picture", "")
 
         conn = get_db()
         # Check if user exists by google_id or email
-        existing = conn.execute(
-            "SELECT * FROM users WHERE google_id=? OR email=?", (google_id, email)
-        ).fetchone()
+        existing = conn.execute("SELECT * FROM users WHERE google_id=?", (google_id,)).fetchone()
+        if not existing:
+            existing = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            if existing and existing["google_id"]:
+                conn.close()                       # that email belongs to a different Google account
+                flash("This email is already linked to another Google account.", "error")
+                return redirect(url_for("login"))
 
         if existing:
-            # Update google_id if logging in with Google for the first time on existing account
+            # First Google sign-in on an account that was created with email + password.
+            # Anyone could have registered this address earlier (nothing verified it), so the
+            # old password is thrown away: the verified Google owner now owns the account.
             if not existing["google_id"]:
-                conn.execute("UPDATE users SET google_id=? WHERE id=?", (google_id, existing["id"]))
+                conn.execute("UPDATE users SET google_id=?, password=? WHERE id=?",
+                             (google_id, generate_password_hash(secrets.token_hex(32)), existing["id"]))
+                bump_sessions(conn, existing["id"])
                 conn.commit()
             uid  = existing["id"]
             uname = existing["name"]
@@ -923,10 +1034,14 @@ def google_callback():
             uid   = new_user["id"]
             uname = new_user["name"]
 
+        sv_row = conn.execute("SELECT sess_ver FROM users WHERE id=?", (uid,)).fetchone()
         conn.close()
+        session.clear()                            # fresh session (no fixation)
+        session["sv"] = int((sv_row["sess_ver"] if sv_row else 0) or 0)
         session["user_id"]   = uid
         session["user_name"] = uname
         session["user_email"]= email
+        session.permanent = True
         flash(f"✅ Logged in with Google as {_esc(uname)}.", "success")
         return redirect(url_for("dashboard"))
     except Exception as e:
@@ -966,8 +1081,7 @@ def forgot_password():
             log_activity("requested", "password_reset", f"For {email}")
 
         conn.close()
-        flash("If that email is registered, a reset link has been sent. "
-              "Check your inbox (and the server log if email isn't configured).", "success")
+        flash("If that email is registered, a reset link has been sent. Check your inbox.", "success")
         return redirect(url_for("login"))
 
     return render_template("forgot_password.html")
@@ -1093,12 +1207,15 @@ def profile():
                 if photo.content_type not in allowed:
                     flash("Only JPG, PNG, GIF or WebP images allowed.", "error")
                 else:
-                    photo_bytes = photo.read(5 * 1024 * 1024)  # max 5MB
-                    if len(photo_bytes) >= 5 * 1024 * 1024:
-                        flash("Image too large. Maximum size is 5 MB.", "error")
+                    photo_bytes = photo.read(2 * 1024 * 1024)  # max 2MB
+                    real = sniff_image(photo_bytes)
+                    if len(photo_bytes) >= 2 * 1024 * 1024:
+                        flash("Image too large. Maximum size is 2 MB.", "error")
+                    elif not real:
+                        flash("That file is not a real JPG, PNG, GIF or WebP image.", "error")
                     else:
                         b64 = base64.b64encode(photo_bytes).decode("utf-8")
-                        data_url = f"data:{photo.content_type};base64,{b64}"
+                        data_url = f"data:{real};base64,{b64}"
                         conn.execute("UPDATE users SET avatar_photo=? WHERE id=?", (data_url, uid))
                         conn.commit()
                         flash("✅ Profile photo updated.", "success")
@@ -1120,11 +1237,7 @@ def profile():
                 flash("Type DELETE to confirm account deletion.", "error")
             else:
                 # Manually cascade — remove all data linked to this account first
-                conn.execute("DELETE FROM disease_scans WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM crop_notes WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM farms WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM fertilizer_history WHERE user_id=?", (uid,))
-                conn.execute("DELETE FROM users WHERE id=?", (uid,))
+                delete_user_data(conn, uid)
                 conn.commit()
                 conn.close()
                 session.clear()
@@ -1197,18 +1310,16 @@ def farms():
 @login_required
 def add_farm():
     uid=session["user_id"]; d=request.form
-    name=d.get("farm_name","").strip(); crop=d.get("crop_type","").strip()
-    loc=d.get("location","").strip();   pdate=d.get("planting_date","").strip()
-    status=d.get("status","Active").strip()
+    name=clip(d.get("farm_name"),100); crop=clip(d.get("crop_type"),60)
+    loc=clip(d.get("location"),120);   pdate=valid_date(d.get("planting_date"))
+    status=clip(d.get("status","Active"),20) or "Active"
     errors=[]
     if not name:  errors.append("Farm name is required.")
     if not crop:  errors.append("Crop type is required.")
     if not loc:   errors.append("Location is required.")
-    if not pdate: errors.append("Planting date is required.")
-    try:
-        area_f=float(d.get("area","0"))
-        if area_f<=0: raise ValueError
-    except (ValueError,TypeError):
+    if not pdate: errors.append("Planting date is required (a real date).")
+    area_f=to_float(d.get("area","0"),0.0001,1e6)
+    if area_f is None:
         errors.append("Area must be a positive number.")
     if errors:
         for e in errors: flash(e,"error")
@@ -1229,11 +1340,13 @@ def edit_farm(fid):
         conn.close(); flash("Farm not found or access denied.","error")
         return redirect(url_for("farms"))
     d=request.form
-    name=d.get("farm_name","").strip(); crop=d.get("crop_type","").strip()
-    loc=d.get("location","").strip();   pdate=d.get("planting_date","").strip()
-    status=d.get("status","Active").strip()
-    try:    area_f=float(d.get("area","1"))
-    except: area_f=1.0
+    name=clip(d.get("farm_name"),100); crop=clip(d.get("crop_type"),60)
+    loc=clip(d.get("location"),120);   pdate=valid_date(d.get("planting_date"))
+    status=clip(d.get("status","Active"),20) or "Active"
+    area_f=to_float(d.get("area","1"),0.0001,1e6,1.0)
+    if not (name and crop and loc and pdate):
+        conn.close(); flash("Name, crop, location and a real planting date are required.","error")
+        return redirect(url_for("farms"))
     conn.execute(
         "UPDATE farms SET farm_name=?,crop_type=?,location=?,area=?,planting_date=?,status=? WHERE id=? AND user_id=?",
         (name,crop,loc,area_f,pdate,status,fid,uid))
@@ -1249,8 +1362,9 @@ def delete_farm(fid):
     if not row:
         conn.close(); flash("Farm not found or access denied.","error")
         return redirect(url_for("farms"))
-    # Manually cascade — remove this farm's notes first, then the farm itself
-    conn.execute("DELETE FROM crop_notes WHERE farm_id=? AND user_id=?",(fid,uid))
+    # Manually cascade — remove everything attached to this farm, then the farm itself
+    for t in ("crop_notes","crop_growth","irrigation_log","expense_log"):
+        conn.execute(f"DELETE FROM {t} WHERE farm_id=? AND user_id=?",(fid,uid))
     conn.execute("DELETE FROM farms WHERE id=? AND user_id=?",(fid,uid))
     conn.commit(); conn.close()
     flash(f"🗑️ Farm <strong>{_esc(row['farm_name'])}</strong> deleted.", "success")
@@ -1331,11 +1445,11 @@ def fertilizer():
 @login_required
 def save_fertilizer():
     uid  = session["user_id"]
-    d    = request.get_json(force=True) or {}
-    crop = d.get("crop_type","").strip()
-    area = float(d.get("area", 1))
-    label= d.get("label","").strip()
-    if not crop or area <= 0:
+    d    = request.get_json(silent=True) or {}
+    crop = clip(d.get("crop_type",""), 40)
+    area = to_float(d.get("area", 1), 0.0001, 1e6)
+    label= clip(d.get("label",""), 100)
+    if not crop or area is None:
         return jsonify({"error": "Invalid data"}), 400
     result = calc_fertilizer(crop, area)
     conn = get_db()
@@ -1531,13 +1645,22 @@ def api_farms():
     return jsonify(rows)
 
 @app.route("/api/weather")
+@login_required
 def api_weather():
+    k = "wx:%s" % session["user_id"]
+    if throttle_blocked(k, 60, 600):
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
+    throttle_hit(k)
     return jsonify(get_weather(request.args.get("city","Chittagong")))
 
 @app.route("/api/fertilizer", methods=["POST"])
+@login_required
 def api_fertilizer():
-    d=request.get_json(force=True) or {}
-    return jsonify(calc_fertilizer(d.get("crop_type","rice"),float(d.get("area",1))))
+    d = request.get_json(silent=True) or {}
+    area = to_float(d.get("area", 1), 0.0001, 1e6)
+    if area is None:
+        return jsonify({"error": "Area must be a positive number."}), 400
+    return jsonify(calc_fertilizer(clip(d.get("crop_type", "rice"), 40) or "rice", area))
 
 # ── Disease Detection ─────────────────────────────────────────────
 DISEASE_DB = {
@@ -1656,15 +1779,16 @@ def growth_page():
 @login_required
 def add_growth():
     uid = current_user()["id"]
-    farm_id      = request.form.get("farm_id")
-    planting_date= request.form.get("planting_date","")
-    expected_days= int(request.form.get("expected_days", 90))
-    growth_stage = request.form.get("growth_stage","Seedling")
-    notes        = request.form.get("notes","")
-    if not farm_id or not planting_date:
-        flash("Farm and planting date are required.", "error")
-        return redirect(url_for("growth_page"))
+    planting_date= valid_date(request.form.get("planting_date"))
+    expected_days= to_int(request.form.get("expected_days", 90), 1, 1500, 90)
+    growth_stage = clip(request.form.get("growth_stage","Seedling"), 40)
+    notes        = clip(request.form.get("notes",""), 1000)
     conn = get_db()
+    farm_id = owned_farm_id(conn, uid, request.form.get("farm_id"))
+    if not farm_id or not planting_date:
+        conn.close()
+        flash("Choose one of your farms and a valid planting date.", "error")
+        return redirect(url_for("growth_page"))
     ph = "%s" if USE_POSTGRES else "?"
     # Calculate harvest date
     from datetime import date, timedelta
@@ -1749,16 +1873,17 @@ def irrigation_page():
 @login_required
 def add_irrigation():
     uid = current_user()["id"]
-    farm_id      = request.form.get("farm_id")
-    date         = request.form.get("date","")
-    water_liters = float(request.form.get("water_liters", 0) or 0)
-    method       = request.form.get("method","Manual")
-    duration_min = int(request.form.get("duration_min", 0) or 0)
-    notes        = request.form.get("notes","")
-    if not farm_id or not date:
-        flash("Farm and date are required.", "error")
-        return redirect(url_for("irrigation_page"))
+    date         = valid_date(request.form.get("date"))
+    water_liters = to_float(request.form.get("water_liters", 0) or 0, 0, 1e9, None)
+    method       = clip(request.form.get("method","Manual"), 40)
+    duration_min = to_int(request.form.get("duration_min", 0) or 0, 0, 100000, None)
+    notes        = clip(request.form.get("notes",""), 1000)
     conn = get_db()
+    farm_id = owned_farm_id(conn, uid, request.form.get("farm_id"))
+    if not farm_id or not date or water_liters is None or duration_min is None:
+        conn.close()
+        flash("Choose one of your farms, a valid date and valid numbers.", "error")
+        return redirect(url_for("irrigation_page"))
     ph = "%s" if USE_POSTGRES else "?"
     conn.execute(
         f"INSERT INTO irrigation_log (farm_id,user_id,date,water_liters,method,duration_min,notes) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
@@ -1856,16 +1981,17 @@ def expenses_page():
 @login_required
 def add_expense():
     uid      = current_user()["id"]
-    farm_id  = request.form.get("farm_id")
-    etype    = request.form.get("type","expense")
-    category = request.form.get("category","Other")
-    amount   = float(request.form.get("amount", 0) or 0)
-    desc     = request.form.get("description","")
-    date     = request.form.get("date","")
-    if not farm_id or not date or amount <= 0:
-        flash("Farm, date and amount are required.", "error")
-        return redirect(url_for("expenses_page"))
+    etype    = "income" if request.form.get("type") == "income" else "expense"
+    category = clip(request.form.get("category","Other"), 40)
+    amount   = to_float(request.form.get("amount", 0) or 0, 0.0001, 1e10, None)
+    desc     = clip(request.form.get("description",""), 300)
+    date     = valid_date(request.form.get("date"))
     conn = get_db()
+    farm_id  = owned_farm_id(conn, uid, request.form.get("farm_id"))
+    if not farm_id or not date or amount is None:
+        conn.close()
+        flash("Choose one of your farms, a valid date and a positive amount.", "error")
+        return redirect(url_for("expenses_page"))
     ph = "%s" if USE_POSTGRES else "?"
     conn.execute(
         f"INSERT INTO expense_log (farm_id,user_id,type,category,amount,description,date) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
@@ -2512,6 +2638,19 @@ def api_push_key():
         return jsonify({"enabled": False}), 200
     return jsonify({"enabled": True, "key": VAPID_PUBLIC_KEY})
 
+_PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com", "push.services.mozilla.com",
+               "notify.windows.com", "push.apple.com", "web.push.apple.com")
+def push_endpoint_ok(ep):
+    """Only the real browser push services may be called by the server (blocks SSRF / internal hosts)."""
+    try:
+        u = urlparse(ep)
+        host = (u.hostname or "").lower()
+        if u.scheme != "https" or u.username or u.password or u.port not in (None, 443) or len(ep) > 1000:
+            return False
+        return any(host == h or host.endswith("." + h) for h in _PUSH_HOSTS)
+    except Exception:
+        return False
+
 @app.route("/api/push/subscribe", methods=["POST"])
 @login_required
 def api_push_subscribe():
@@ -2519,11 +2658,17 @@ def api_push_subscribe():
         return jsonify({"error": "Alerts are not configured on this server."}), 503
     b = request.get_json(silent=True) or {}
     ep, keys = (b.get("endpoint") or ""), (b.get("keys") or {})
-    if not ep.startswith("https://") or not keys.get("p256dh") or not keys.get("auth") or len(ep) > 1000:
+    if (not isinstance(ep, str) or not isinstance(keys, dict) or not push_endpoint_ok(ep)
+            or not isinstance(keys.get("p256dh"), str) or not isinstance(keys.get("auth"), str)
+            or not keys.get("p256dh") or not keys.get("auth")):
         return jsonify({"error": "Invalid subscription."}), 400
     uid = session["user_id"]
     conn = get_db()
     conn.execute("DELETE FROM push_subs WHERE endpoint=?", (ep,))
+    # at most 5 devices per user: forget the oldest ones
+    old = conn.execute("SELECT id FROM push_subs WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
+    for r in old[4:]:
+        conn.execute("DELETE FROM push_subs WHERE id=?", (r["id"],))
     conn.execute("INSERT INTO push_subs (user_id,endpoint,p256dh,auth,lang) VALUES (?,?,?,?,?)",
                  (uid, ep, keys["p256dh"][:200], keys["auth"][:100], session.get("lang", "en")))
     conn.commit(); conn.close()
@@ -2573,10 +2718,12 @@ def send_push(sub, payload):
         from pywebpush import webpush, WebPushException
     except Exception:
         return "error"
+    if not push_endpoint_ok(sub["endpoint"]):
+        return "gone"                              # not a real browser push service: drop it
     try:
         webpush(subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
                 data=json.dumps(payload, ensure_ascii=False), vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": VAPID_SUBJECT}, ttl=6 * 3600)
+                vapid_claims={"sub": VAPID_SUBJECT}, ttl=6 * 3600, timeout=10)
         return "ok"
     except WebPushException as e:
         code = getattr(getattr(e, "response", None), "status_code", None)
@@ -2588,7 +2735,7 @@ def send_push(sub, payload):
 def api_cron_alerts():
     """Called every few hours by the GitHub Actions 'alerts' workflow. Protected by CRON_TOKEN."""
     tok = request.headers.get("X-Cron-Token", "")
-    if not CRON_TOKEN or not PUSH_ENABLED or not hmac.compare_digest(tok, CRON_TOKEN):
+    if not CRON_TOKEN or not PUSH_ENABLED or not hmac.compare_digest(tok.encode("utf-8"), CRON_TOKEN.encode("utf-8")):
         return jsonify({"error": "forbidden"}), 403
     day = datetime.now().strftime("%Y-%m-%d")
     conn = get_db()

@@ -1,4 +1,4 @@
-/* GreenField Service Worker v4
+/* GreenField Service Worker v5
  *
  * Served from /sw.js (site root) so it really controls every page.
  *  - Pages: network first, but if the server is slow (Render free tier waking up)
@@ -7,7 +7,7 @@
  *  - /offline is pre-cached and used when nothing else is available.
  *  - Saved pages are wiped on logout so the next person never sees them.
  */
-const VERSION = 'v4';
+const VERSION = 'v5';
 const STATIC = 'gf-static-' + VERSION;
 const PAGES = 'gf-pages-' + VERSION;
 const SLOW_MS = 3500;               // after this, prefer the saved copy of a page
@@ -43,17 +43,31 @@ const cacheable = res => res && res.ok && res.type !== 'opaqueredirect' && !res.
 async function handleNavigation(req) {
   const url = new URL(req.url);
 
-  // Logging out: forget every saved page.
-  if (url.pathname === '/logout') {
+  // Logging out / signing in / registering: forget every saved page so one person's
+  // private pages can never be shown to the next person using this browser.
+  if (['/logout', '/login', '/register', '/forgot-password'].includes(url.pathname)) {
     await caches.delete(PAGES);
+    return fetch(req).catch(() => caches.match('/offline'));
+  }
+  // Never keep account pages / downloads in the offline cache.
+  if (url.pathname.startsWith('/account') || url.pathname === '/profile') {
     return fetch(req).catch(() => caches.match('/offline'));
   }
 
   const pages = await caches.open(PAGES);
-  const saved = await pages.match(req);
+  let saved = await pages.match(req);
+  if (saved) {                                       // saved copies expire after 12 hours
+    const at = Number(saved.headers.get('x-gf-saved-at') || 0);
+    if (!at || Date.now() - at > 12 * 3600 * 1000) { await pages.delete(req); saved = undefined; }
+  }
 
   const network = fetch(req).then(res => {
-    if (cacheable(res) && url.pathname !== '/offline') pages.put(req, res.clone());
+    // The server sent us to the login page => the session is over: drop every saved page.
+    if (res.redirected && new URL(res.url).pathname === '/login') { caches.delete(PAGES); return res; }
+    if (cacheable(res) && url.pathname !== '/offline') {
+      const h = new Headers(res.headers); h.set('x-gf-saved-at', String(Date.now()));
+      res.clone().blob().then(b => pages.put(req, new Response(b, { status: res.status, statusText: res.statusText, headers: h })));
+    }
     return res;
   });
 

@@ -15,7 +15,7 @@
   <span>
     <strong>Live API unavailable:</strong> {{ weather.api_error[:120] }}.
     Showing mock data instead.
-    <a href="https://openweathermap.org/api" target="_blank" style="color:inherit;font-weight:700;text-decoration:underline">
+    <a href="https://openweathermap.org/api" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:700;text-decoration:underline">
       Get a free API key →
     </a>
   </span>
@@ -44,7 +44,7 @@
       </span>
       <span style="font-size:12px;color:var(--muted)">
         — Set <code>OPENWEATHER_KEY</code> in <code>app.py</code> for live data.
-        <a href="https://openweathermap.org/api" target="_blank"
+        <a href="https://openweathermap.org/api" target="_blank" rel="noopener noreferrer"
            style="color:var(--p-light);font-weight:600">Free key →</a>
       </span>
       {% endif %}
