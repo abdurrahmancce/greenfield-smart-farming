@@ -383,6 +383,7 @@
       <div class="nav-section" style="margin-top:6px">{{ 'বাজার ও পরিকল্পনা' if is_bn else 'Market & Planning' }}</div>
       <a class="nav-link" href="{{ url_for('market_page') }}"><i class="fas fa-chart-bar"></i> {{ 'বাজার দর' if is_bn else 'Market Prices' }}</a>
       <a class="nav-link" href="{{ url_for('calendar_page') }}"><i class="fas fa-calendar-alt"></i> {{ 'ফসল ক্যালেন্ডার' if is_bn else 'Crop Calendar' }}</a>
+      {% if is_admin %}<a class="nav-link" href="{{ url_for('admin_panel') }}"><i class="fas fa-chart-pie"></i> Admin</a>{% endif %}
       <a class="nav-link" href="{{ url_for('report_page') }}"><i class="fas fa-file-pdf"></i> {{ 'খামার রিপোর্ট' if is_bn else 'Farm Report' }}</a>
 
       <div class="nav-section" style="margin-top:6px">{{ 'বিশ্লেষণ' if is_bn else 'Insights' }}</div>
@@ -529,6 +530,9 @@
 </div>
 
 <script src="{{ url_for('static',filename='js/app.js') }}"></script>
+<meta name="gf-uid" content="{{ session.get('user_id','') }}">
+<meta name="gf-lang" content="{{ lang|default('en') }}">
+<script src="{{ url_for('static',filename='js/offline-sync.js') }}" defer></script>
 <script>
 // ── Sidebar toggle ──
 const hamburgerBtn = document.getElementById('hamburgerBtn');

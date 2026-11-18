@@ -31,17 +31,22 @@ A full-stack smart farming web application designed to help farmers manage farms
 * **Money tracking** - income/expense log with per-farm profit & loss, monthly trend and cost breakdown.
 * **Market prices you can trust** - labelled reference values plus prices *you* record; trends are shown only when there is enough real data.
 * **Farm report** - totals, per-farm P&L and today's outlook, printable / save as PDF; full **data export** of your account.
+* **Works without signal** - expenses and irrigation entered offline are saved on the phone and sent automatically when the connection returns (no duplicates).
+* **Downloads** - CSV (Excel-safe) for expenses, irrigation and farms, plus an English PDF report.
+* **Push alerts** - rain/heat/fungal risk, harvest approaching/ready, irrigation due or not needed.
+* **Admin overview** - user and feature-usage numbers only, visible just to the e-mail(s) in `ADMIN_EMAILS`.
 * **Bangla + English** UI, dark mode, installable offline-friendly PWA.
-* **Engineering** - CSRF (Origin/Referer) protection, login throttling, hashed one-time reset tokens, other devices signed out on password change, security headers; pytest suite run by GitHub Actions on every push; nightly encrypted PostgreSQL backup (pg_dump + AES-256 GPG) kept as a workflow artifact for 30 days; keep-alive workflow for the free hosting tier.
+* **Engineering** - CSRF (Origin/Referer) protection, login throttling, hashed one-time reset tokens, other devices signed out on password change, security headers; pytest suite run by GitHub Actions on every push; nightly encrypted PostgreSQL backup (age public key or a 24+ character GPG passphrase) kept as a workflow artifact for 14 days, failing loudly when it cannot run; keep-alive workflow for the free hosting tier.
 
 ## ⚠️ Honest limitations
 
-* The disease detector is an AI guess. In an informal test it was right on only about 57% of clean lab photos and can answer differently on a repeat run; always confirm with a local agriculture officer.
+* The disease detector is an AI guess. Measured with `tools/eval_disease.py` on PlantVillage lab photos (`eval-results.txt`): **64% correct on the 67 photos that got an answer (43/67; 53 more failed because of the free AI quota)**. It was also over-confident: answers shown as 80-100% were right only 71% of the time, 60-79% right 67%, below 60% right 17%. Tomato leaf mold, bacterial spot and Septoria were the weakest. Real field photos will do worse than lab photos, and a repeat run can answer differently - always confirm with a local agriculture officer.
 * Market prices are not live: the government source (DAM) publishes daily prices only as downloadable files, so the app shows approximate reference values and the prices users record themselves.
 * Task rules are general guidance, not field-specific advice.
 * Free hosting sleeps when idle (first load can take ~30-50 s); the keep-alive job reduces this.
 * The nightly backup runs, but restoring from it has not been tested yet.
-* Reports use the browser's print / save-as-PDF rather than server-generated PDFs.
+* The server-made PDF report is English-only (Bangla needs a shaping font); the browser's print / save-as-PDF on the Farm Report page handles Bangla. CSV files open correctly in Excel with Bangla text.
+* Offline entries (expenses / irrigation) are kept in the phone's browser storage until they sync; clearing the browser's site data before they sync deletes them.
 
 ---
 
@@ -588,10 +593,10 @@ Configured the production environment with the OpenWeather API key and fallback 
 
 Possible future improvements include:
 
-* Measure and improve disease-detection accuracy on real field photos
+* Improve disease-detection accuracy (currently 64% on lab photos) and test it on real field photos
 * A tested restore procedure for the nightly backups
 * SMS alerts (needs a paid gateway) in addition to push notifications
-* Server-generated PDF reports with Bangla fonts
+* Bangla fonts in the server-generated PDF report
 * Soil condition monitoring and IoT sensor integration
 * Yield prediction and fertilizer recommendation based on soil data
 * Role-based access for farmers and administrators
