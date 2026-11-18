@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block page_title %}📈 Admin overview{% endblock %}
+{% block page_sub %}Numbers only — no personal records are shown here · {{ when }}{% endblock %}
+{% block head %}
+<style>
+.ad-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.ad-tile{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px}
+.ad-tile b{display:block;font-size:26px;font-weight:900}
+.ad-tile span{font-size:12.5px;color:var(--text-muted,#666)}
+.ad-bars{display:flex;align-items:flex-end;gap:6px;height:110px}
+.ad-bar{flex:1;background:#43A047;border-radius:4px 4px 0 0;min-height:3px;position:relative}
+.ad-bar i{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:11px;font-style:normal}
+.ad-lab{display:flex;gap:6px;font-size:10px;margin-top:4px}.ad-lab span{flex:1;text-align:center}
+.ok{color:#2E7D32}.no{color:#C62828}
+</style>
+{% endblock %}
+{% block content %}
+<div class="ad-grid">
+  <div class="ad-tile"><b>{{ users.total }}</b><span>Users</span></div>
+  <div class="ad-tile"><b>{{ users.new7 }}</b><span>New (7 days)</span></div>
+  <div class="ad-tile"><b>{{ users.new30 }}</b><span>New (30 days)</span></div>
+  <div class="ad-tile"><b>{{ users.with_farm }}</b><span>Users with a farm</span></div>
+  <div class="ad-tile"><b>{{ users.google }} / {{ users.password }}</b><span>Google / password sign-ups</span></div>
+  <div class="ad-tile"><b>{{ users.push }}</b><span>Users with alerts on</span></div>
+  <div class="ad-tile"><b>{{ area }}</b><span>Total acres registered</span></div>
+</div>
+
+<div class="card" style="margin-bottom:16px"><div class="card-header"><h3 class="card-title">Sign-ups, last 14 days</h3></div>
+  <div class="card-body">
+    {% if signups %}
+    <div class="ad-bars">{% for s in signups %}<div class="ad-bar" style="height:{{ (s.n / mx * 100)|round|int }}%"><i>{{ s.n }}</i></div>{% endfor %}</div>
+    <div class="ad-lab">{% for s in signups %}<span>{{ s.day[5:] }}</span>{% endfor %}</div>
+    {% else %}<p>No sign-ups in this period.</p>{% endif %}
+  </div></div>
+
+<div class="card" style="margin-bottom:16px"><div class="card-header"><h3 class="card-title">Feature usage</h3></div>
+  <div class="card-body" style="overflow-x:auto"><table class="table" style="width:100%"><thead><tr><th>Feature</th><th>Records</th><th>Users</th><th>Last 30 days</th></tr></thead><tbody>
+  {% for f in feats %}<tr><td>{{ f.label }}</td><td>{{ f.rows }}</td><td>{{ f.users }}</td><td>{{ f.last30 if f.last30 is not none else '—' }}</td></tr>{% endfor %}
+  </tbody></table></div></div>
+
+<div class="card" style="margin-bottom:16px"><div class="card-header"><h3 class="card-title">Most grown crops</h3></div>
+  <div class="card-body">{% for c in crops %}<span class="badge" style="margin:3px;display:inline-block">{{ c.crop }} · {{ c.n }}</span>{% else %}<p>No farms yet.</p>{% endfor %}</div></div>
+
+<div class="card"><div class="card-header"><h3 class="card-title">Services configured</h3></div>
+  <div class="card-body">
+    <p>Push alerts: <b class="{{ 'ok' if push_on else 'no' }}">{{ 'on' if push_on else 'off' }}</b> ·
+       Email: <b class="{{ 'ok' if mail_on else 'no' }}">{{ 'on' if mail_on else 'off (password reset disabled)' }}</b> ·
+       Photo AI: <b class="{{ 'ok' if gem else 'no' }}">{{ 'on' if gem else 'off' }}</b> ·
+       Live weather: <b class="{{ 'ok' if wx else 'no' }}">{{ 'on' if wx else 'off' }}</b></p>
+  </div></div>
+{% endblock %}

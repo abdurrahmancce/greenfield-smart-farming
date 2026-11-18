@@ -1,4 +1,4 @@
-/* GreenField Service Worker v5
+/* GreenField Service Worker v6
  *
  * Served from /sw.js (site root) so it really controls every page.
  *  - Pages: network first, but if the server is slow (Render free tier waking up)
@@ -7,7 +7,7 @@
  *  - /offline is pre-cached and used when nothing else is available.
  *  - Saved pages are wiped on logout so the next person never sees them.
  */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const STATIC = 'gf-static-' + VERSION;
 const PAGES = 'gf-pages-' + VERSION;
 const SLOW_MS = 3500;               // after this, prefer the saved copy of a page
@@ -17,6 +17,7 @@ const PRECACHE = [
   '/offline',
   '/static/css/style.css',
   '/static/js/app.js',
+  '/static/js/offline-sync.js',
   '/static/manifest.json',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',

@@ -398,6 +398,12 @@ def init_db():
             lang       TEXT    DEFAULT 'en',
             created_at TEXT    DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS offline_sync (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            cid     TEXT    NOT NULL,
+            UNIQUE (user_id, cid)
+        );
         CREATE TABLE IF NOT EXISTS push_log (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -634,7 +640,7 @@ def delete_user_data(conn, uid):
     """Remove EVERYTHING that belongs to a user (used by 'delete account')."""
     u = conn.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
     for t in ("expense_log", "irrigation_log", "crop_growth", "crop_notes", "disease_scans",
-              "fertilizer_history", "push_log", "push_subs", "password_resets", "price_history"):
+              "fertilizer_history", "push_log", "push_subs", "password_resets", "price_history", "offline_sync"):
         conn.execute(f"DELETE FROM {t} WHERE user_id=?", (uid,))
     if u and u["email"]:                              # the activity log mentions the e-mail address
         conn.execute("DELETE FROM activity_log WHERE detail LIKE ?", ("%" + u["email"] + "%",))
@@ -671,6 +677,8 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if "user_id" not in session:
+            if request.headers.get("X-GF-Fetch"):          # called by our own JavaScript, not a page visit
+                return jsonify({"ok": False, "msg": "login"}), 401
             flash("Please log in to continue.", "error")
             return redirect(url_for("login", next=request.path))
         return f(*args, **kwargs)
@@ -709,6 +717,7 @@ def inject_user():
         "lang": lang,
         "is_bn": lang == "bn",
         "avatar_url": avatar_url,
+        "is_admin": is_admin(user),
         "storage_label": "Secure Cloud Database (PostgreSQL)" if USE_POSTGRES else "Local SQLite Database",
     }
 
@@ -1873,25 +1882,12 @@ def irrigation_page():
 @login_required
 def add_irrigation():
     uid = current_user()["id"]
-    date         = valid_date(request.form.get("date"))
-    water_liters = to_float(request.form.get("water_liters", 0) or 0, 0, 1e9, None)
-    method       = clip(request.form.get("method","Manual"), 40)
-    duration_min = to_int(request.form.get("duration_min", 0) or 0, 0, 100000, None)
-    notes        = clip(request.form.get("notes",""), 1000)
     conn = get_db()
-    farm_id = owned_farm_id(conn, uid, request.form.get("farm_id"))
-    if not farm_id or not date or water_liters is None or duration_min is None:
-        conn.close()
-        flash("Choose one of your farms, a valid date and valid numbers.", "error")
-        return redirect(url_for("irrigation_page"))
-    ph = "%s" if USE_POSTGRES else "?"
-    conn.execute(
-        f"INSERT INTO irrigation_log (farm_id,user_id,date,water_liters,method,duration_min,notes) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
-        (farm_id, uid, date, water_liters, method, duration_min, notes)
-    )
-    conn.commit()
+    ok, msg = save_irrigation_entry(conn, uid, request.form)
     conn.close()
-    flash("✅ Irrigation logged.", "success")
+    if request.headers.get("X-GF-Fetch"):
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 400)
+    flash(msg, "success" if ok else "error")
     return redirect(url_for("irrigation_page"))
 
 @app.route("/irrigation/delete/<int:iid>", methods=["POST"])
@@ -1977,29 +1973,115 @@ def expenses_page():
                            profit=profit, today=today, farm_id_filter=farm_id_filter,
                            fin=finance_summary(uid))
 
-@app.route("/expenses/add", methods=["POST"])
-@login_required
-def add_expense():
-    uid      = current_user()["id"]
-    etype    = "income" if request.form.get("type") == "income" else "expense"
-    category = clip(request.form.get("category","Other"), 40)
-    amount   = to_float(request.form.get("amount", 0) or 0, 0.0001, 1e10, None)
-    desc     = clip(request.form.get("description",""), 300)
-    date     = valid_date(request.form.get("date"))
-    conn = get_db()
-    farm_id  = owned_farm_id(conn, uid, request.form.get("farm_id"))
+# ── entries that may also arrive later from the offline queue ───────
+import re as _re
+def _claim_cid(conn, uid, cid):
+    """Each offline entry has a random id so a retry can never be saved twice.
+    True = new, False = already saved earlier (not an error), None = malformed id."""
+    if not cid:
+        return True
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{8,64}", str(cid)):
+        return None
+    ph = "%s" if USE_POSTGRES else "?"
+    if conn.execute(f"SELECT 1 FROM offline_sync WHERE user_id={ph} AND cid={ph}", (uid, cid)).fetchone():
+        return False
+    try:
+        conn.execute(f"INSERT INTO offline_sync (user_id,cid) VALUES ({ph},{ph})", (uid, cid))
+    except Exception:                                   # two requests raced: the other one won
+        try: conn.rollback()
+        except Exception: pass
+        return False
+    return True
+
+def save_expense_entry(conn, uid, f):
+    etype    = "income" if f.get("type") == "income" else "expense"
+    category = clip(f.get("category", "Other"), 40)
+    amount   = to_float(f.get("amount", 0) or 0, 0.0001, 1e10, None)
+    desc     = clip(f.get("description", ""), 300)
+    date     = valid_date(f.get("date"))
+    farm_id  = owned_farm_id(conn, uid, f.get("farm_id"))
     if not farm_id or not date or amount is None:
-        conn.close()
-        flash("Choose one of your farms, a valid date and a positive amount.", "error")
-        return redirect(url_for("expenses_page"))
+        return False, "Choose one of your farms, a valid date and a positive amount."
+    claim = _claim_cid(conn, uid, f.get("cid"))
+    if claim is None:
+        return False, "Invalid entry id."
+    if claim is False:
+        return True, "✅ Entry already saved."
     ph = "%s" if USE_POSTGRES else "?"
     conn.execute(
         f"INSERT INTO expense_log (farm_id,user_id,type,category,amount,description,date) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
-        (farm_id, uid, etype, category, amount, desc, date)
-    )
+        (farm_id, uid, etype, category, amount, desc, date))
     conn.commit()
+    return True, "✅ Entry saved."
+
+def save_irrigation_entry(conn, uid, f):
+    date         = valid_date(f.get("date"))
+    water_liters = to_float(f.get("water_liters", 0) or 0, 0, 1e9, None)
+    method       = clip(f.get("method", "Manual"), 40)
+    duration_min = to_int(f.get("duration_min", 0) or 0, 0, 100000, None)
+    notes        = clip(f.get("notes", ""), 1000)
+    farm_id      = owned_farm_id(conn, uid, f.get("farm_id"))
+    if not farm_id or not date or water_liters is None or duration_min is None:
+        return False, "Choose one of your farms, a valid date and valid numbers."
+    claim = _claim_cid(conn, uid, f.get("cid"))
+    if claim is None:
+        return False, "Invalid entry id."
+    if claim is False:
+        return True, "✅ Irrigation already logged."
+    ph = "%s" if USE_POSTGRES else "?"
+    conn.execute(
+        f"INSERT INTO irrigation_log (farm_id,user_id,date,water_liters,method,duration_min,notes) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+        (farm_id, uid, date, water_liters, method, duration_min, notes))
+    conn.commit()
+    return True, "✅ Irrigation logged."
+
+@app.route("/api/offline/sync", methods=["POST"])
+@login_required
+def api_offline_sync():
+    """Receives entries that were written while the phone had no network."""
+    uid = session["user_id"]
+    k = "sync:%s" % uid
+    if throttle_blocked(k, 40, 600):
+        return jsonify({"error": "Too many sync requests."}), 429
+    throttle_hit(k)
+    body = request.get_json(silent=True) or {}
+    entries = body.get("entries")
+    if not isinstance(entries, list) or len(entries) > 50:
+        return jsonify({"error": "Send between 1 and 50 entries."}), 400
+    done, rejected = [], []
+    conn = get_db()
+    for e in entries:
+        if not isinstance(e, dict) or not isinstance(e.get("f"), dict):
+            continue
+        cid = str(e.get("cid") or "")
+        f = {kk: (vv if isinstance(vv, (str, int, float)) else "") for kk, vv in e["f"].items()}
+        f["cid"] = cid
+        if not cid:
+            rejected.append({"cid": cid, "reason": "missing id"}); continue
+        try:
+            fn = save_expense_entry if e.get("kind") == "expense" else save_irrigation_entry if e.get("kind") == "irrigation" else None
+            if fn is None:
+                rejected.append({"cid": cid, "reason": "unknown kind"}); continue
+            ok, msg = fn(conn, uid, f)
+        except Exception as ex:
+            print("[offline-sync]", type(ex).__name__)
+            try: conn.rollback()
+            except Exception: pass
+            ok, msg = False, "could not save"
+        (done if ok else rejected).append(cid if ok else {"cid": cid, "reason": msg})
     conn.close()
-    flash("✅ Entry saved.", "success")
+    return jsonify({"done": done, "rejected": rejected})
+
+@app.route("/expenses/add", methods=["POST"])
+@login_required
+def add_expense():
+    uid = current_user()["id"]
+    conn = get_db()
+    ok, msg = save_expense_entry(conn, uid, request.form)
+    conn.close()
+    if request.headers.get("X-GF-Fetch"):
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 400)
+    flash(msg, "success" if ok else "error")
     return redirect(url_for("expenses_page"))
 
 @app.route("/expenses/delete/<int:eid>", methods=["POST"])
@@ -2301,6 +2383,112 @@ def report_page():
         total_income=total_income, total_expense=total_expense,
         profit=profit, today=today, fin=finance_summary(uid),
         tasks=_report_tasks(uid), wx=_report_weather(farms))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN PANEL  (numbers only - never other people's records)
+# ══════════════════════════════════════════════════════════════════
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+def is_admin(user):
+    """Set ADMIN_EMAILS (comma separated) in the environment to enable the panel."""
+    try:
+        return bool(user and ADMIN_EMAILS and (user["email"] or "").lower() in ADMIN_EMAILS)
+    except Exception:
+        return False
+
+@app.route("/admin")
+@login_required
+def admin_panel():
+    if not is_admin(current_user()):
+        abort(404)                                    # do not even reveal that the page exists
+    conn = get_db()
+    def one(q, a=()):
+        r = conn.execute(q, a).fetchone()
+        return int(list(dict(r).values())[0] or 0)
+    now = datetime.now()
+    d7  = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    d30 = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    users = {
+        "total": one("SELECT COUNT(*) FROM users"),
+        "new7": one("SELECT COUNT(*) FROM users WHERE substr(created_at,1,10)>=?", (d7,)),
+        "new30": one("SELECT COUNT(*) FROM users WHERE substr(created_at,1,10)>=?", (d30,)),
+        "google": one("SELECT COUNT(*) FROM users WHERE google_id IS NOT NULL AND google_id<>''"),
+        "with_farm": one("SELECT COUNT(DISTINCT user_id) FROM farms"),
+        "push": one("SELECT COUNT(DISTINCT user_id) FROM push_subs"),
+    }
+    users["password"] = users["total"] - users["google"]
+    feats = []
+    for label, table, datecol in (("Farms", "farms", "created_at"), ("Income & expenses", "expense_log", "date"),
+                                  ("Irrigation logs", "irrigation_log", "date"), ("Growth tracking", "crop_growth", "created_at"),
+                                  ("Farm notes", "crop_notes", "created_at"), ("Fertilizer saved", "fertilizer_history", "created_at"),
+                                  ("Disease photo scans", "disease_scans", "created_at"), ("Offline-synced entries", "offline_sync", None)):
+        feats.append({"label": label,
+                      "rows": one(f"SELECT COUNT(*) FROM {table}"),
+                      "users": one(f"SELECT COUNT(DISTINCT user_id) FROM {table}"),
+                      "last30": one(f"SELECT COUNT(*) FROM {table} WHERE substr({datecol},1,10)>=?", (d30,)) if datecol else None})
+    signups = [dict(r) for r in conn.execute(
+        "SELECT substr(created_at,1,10) AS day, COUNT(*) AS n FROM users WHERE substr(created_at,1,10)>=? GROUP BY day ORDER BY day",
+        ((now - timedelta(days=13)).strftime("%Y-%m-%d"),)).fetchall()]
+    crops = [dict(r) for r in conn.execute(
+        "SELECT LOWER(crop_type) AS crop, COUNT(*) AS n FROM farms GROUP BY LOWER(crop_type) ORDER BY n DESC LIMIT 8").fetchall()]
+    area = one("SELECT COALESCE(CAST(SUM(area) AS INTEGER),0) FROM farms")
+    conn.close()
+    mx = max([s["n"] for s in signups] or [1])
+    return render_template("admin.html", users=users, feats=feats, signups=signups, crops=crops, mx=mx, area=area,
+                           push_on=PUSH_ENABLED, mail_on=MAIL_ENABLED, gem=bool(os.environ.get("GEMINI_API_KEY")),
+                           wx=bool(OPENWEATHER_KEY), when=now.strftime("%d %b %Y %H:%M"))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  DOWNLOADS  (CSV for Excel / PDF report - own data only)
+# ══════════════════════════════════════════════════════════════════
+import exports
+
+def _export_rows(uid, year=None):
+    conn = get_db()
+    ph = "%s" if USE_POSTGRES else "?"
+    yr = f" AND substr({{c}}.date,1,4)={ph}" if year else ""
+    args = (uid, year) if year else (uid,)
+    farms = [dict(r) for r in conn.execute(f"SELECT * FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)).fetchall()]
+    exp = [dict(r) for r in conn.execute(
+        f"SELECT e.*, f.farm_name FROM expense_log e JOIN farms f ON e.farm_id=f.id WHERE e.user_id={ph}{yr.format(c='e')} ORDER BY e.date DESC LIMIT 5000", args).fetchall()]
+    irr = [dict(r) for r in conn.execute(
+        f"SELECT i.*, f.farm_name FROM irrigation_log i JOIN farms f ON i.farm_id=f.id WHERE i.user_id={ph}{yr.format(c='i')} ORDER BY i.date DESC LIMIT 5000", args).fetchall()]
+    tot = {r["type"]: float(r["s"] or 0) for r in conn.execute(
+        f"SELECT type, SUM(amount) AS s FROM expense_log WHERE user_id={ph} GROUP BY type", (uid,)).fetchall()}
+    conn.close()
+    return farms, exp, irr, (tot.get("income", 0.0), tot.get("expense", 0.0))
+
+@app.route("/export/<kind>.<fmt>")
+@login_required
+def export_download(kind, fmt):
+    uid = session["user_id"]
+    if kind not in ("farms", "expenses", "irrigation", "report") or fmt not in ("csv", "pdf") or (kind == "report") != (fmt == "pdf"):
+        abort(404)
+    if throttle_blocked("dl:%s" % uid, 20, 600):
+        return Response("Too many downloads, please wait a few minutes.", 429)
+    throttle_hit("dl:%s" % uid)
+    year = request.args.get("year", "")
+    year = year if year.isdigit() and len(year) == 4 else None
+    farms, exp, irr, totals = _export_rows(uid, year)
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    if kind == "farms":
+        body = exports.make_csv(["Farm", "Crop", "Location", "Area (acre)", "Planting date", "Status"],
+                                [[f["farm_name"], f["crop_type"], f["location"], f["area"], f["planting_date"], f["status"]] for f in farms])
+    elif kind == "expenses":
+        body = exports.make_csv(["Date", "Farm", "Type", "Category", "Amount", "Description"],
+                                [[e["date"], e["farm_name"], e["type"], e["category"], e["amount"], e["description"]] for e in exp])
+    elif kind == "irrigation":
+        body = exports.make_csv(["Date", "Farm", "Method", "Water (litres)", "Duration (min)", "Notes"],
+                                [[i["date"], i["farm_name"], i["method"], i["water_liters"], i["duration_min"], i["notes"]] for i in irr])
+    else:
+        body = exports.make_pdf(current_user()["name"], stamp, farms, exp[:200], irr[:200], totals)
+    mime = "application/pdf" if fmt == "pdf" else "text/csv; charset=utf-8"
+    resp = Response(body, mimetype=mime)
+    resp.headers["Content-Disposition"] = f'attachment; filename="greenfield-{kind}-{year or stamp}.{fmt}"'
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -2629,7 +2817,9 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT     = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")
 CRON_TOKEN        = os.environ.get("CRON_TOKEN", "")
 PUSH_ENABLED      = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
-PUSH_KINDS        = {"rain_alert", "heat_alert", "fungal", "harvest_now"}      # only what is worth waking a phone for
+PUSH_KINDS        = {"rain_alert", "heat_alert", "fungal", "harvest_now", "harvest_soon", "irrigate", "skip_irrigation"}
+# Alerts that would repeat every day are sent once per this many days (default: once a day).
+PUSH_REPEAT_DAYS  = {"harvest_soon": 3, "harvest_now": 2, "irrigate": 2, "skip_irrigation": 1}
 
 @app.route("/api/push/key")
 @login_required
@@ -2755,7 +2945,8 @@ def api_cron_alerts():
         for t in tasks:
             if t["kind"] not in PUSH_KINDS:
                 continue
-            if conn.execute("SELECT id FROM push_log WHERE user_id=? AND task_id=? AND day=?", (uid, t["id"], day)).fetchone():
+            since = (datetime.now() - timedelta(days=PUSH_REPEAT_DAYS.get(t["kind"], 1) - 1)).strftime("%Y-%m-%d")
+            if conn.execute("SELECT id FROM push_log WHERE user_id=? AND task_id=? AND day>=?", (uid, t["id"], since)).fetchone():
                 continue
             conn.execute("INSERT INTO push_log (user_id,task_id,day) VALUES (?,?,?)", (uid, t["id"], day))
             conn.commit()
