@@ -3,6 +3,7 @@
 A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware daily tasks, weather, money tracking, AI leaf-disease hints, push alerts and reports — usable on any phone, even with weak signal.
 
 **Live demo:** https://greenfield-smart-farming-1.onrender.com *(free hosting — first load can take 30–50 s)*
+
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
