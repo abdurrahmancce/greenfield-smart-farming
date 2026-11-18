@@ -2357,7 +2357,7 @@ def report_page():
         f"SELECT * FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
     ).fetchall()
     growth = conn.execute(
-        f"""SELECT g.*, f.farm_name FROM crop_growth g JOIN farms f ON g.farm_id=f.id
+        f"""SELECT g.*, f.farm_name, f.crop_type FROM crop_growth g JOIN farms f ON g.farm_id=f.id
             WHERE g.user_id={ph} ORDER BY g.created_at DESC LIMIT 20""", (uid,)
     ).fetchall()
     irrigations = conn.execute(

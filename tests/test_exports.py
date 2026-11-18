@@ -52,3 +52,11 @@ def test_downloads_need_login_and_only_own_data(client):
 def test_safe_cell():
     assert exports.safe_cell("=1+1") == "'=1+1" and exports.safe_cell("-5 off") == "'-5 off"
     assert exports.safe_cell(-5) == -5 and exports.safe_cell("normal") == "normal" and exports.safe_cell(None) == ""
+
+
+def test_report_page_shows_area_and_growth_crop(client):
+    c, fid = _user("rp@x.co")
+    c.post("/growth/add", data={"farm_id": fid, "planting_date": "2026-01-01", "expected_days": "90"}, headers=H)
+    html = c.get("/report").data.decode()
+    assert "<strong>Area:</strong> 2.0 acres" in html or "<strong>Area:</strong> 2 acres" in html
+    assert "<td>Rice</td>" in html                      # crop column of the growth table is filled
