@@ -142,3 +142,25 @@ def test_connections_are_closed_after_a_crash(client):
     for _ in range(30):
         c.post("/farms/add", data={"farm_name": "x", "crop_type": "c", "location": "l", "planting_date": "bad", "area": "1"}, headers=H)
     assert c.post("/farms/add", data={"farm_name": "ok", "crop_type": "c", "location": "l", "planting_date": "2026-01-01", "area": "1"}, headers=H).status_code == 302
+
+
+def test_reset_mail_goes_out_over_https_api(client, monkeypatch):
+    """Render's free plan blocks SMTP, so mail is sent through an HTTPS API; the name is HTML-escaped."""
+    sent = {}
+    class R: status_code = 201
+    def fake_post(url, headers=None, json=None, timeout=None):
+        sent.update(url=url, headers=headers, body=json); return R()
+    monkeypatch.setattr(A, "BREVO_API_KEY", "k"); monkeypatch.setattr(A, "MAIL_FROM", "me@x.co")
+    monkeypatch.setattr(A, "MAIL_ENABLED", True); monkeypatch.setattr(A.requests, "post", fake_post)
+    assert A.send_reset_email("a@x.co", "<b>Eve</b>", "https://x/reset-password/T") is True
+    assert sent["url"].startswith("https://api.brevo.com/") and sent["body"]["to"] == [{"email": "a@x.co"}]
+    assert "<b>Eve</b>" not in sent["body"]["htmlContent"] and "&lt;b&gt;" in sent["body"]["htmlContent"]
+
+
+def test_reset_mail_api_failure_returns_false_without_leaking(client, monkeypatch, capsys):
+    class R: status_code = 401
+    monkeypatch.setattr(A, "BREVO_API_KEY", "secretkey"); monkeypatch.setattr(A, "MAIL_FROM", "me@x.co")
+    monkeypatch.setattr(A, "MAIL_ENABLED", True); monkeypatch.setattr(A.requests, "post", lambda *a, **k: R())
+    assert A.send_reset_email("a@x.co", "A", "https://x/reset-password/SECRETTOKEN") is False
+    out = capsys.readouterr().out
+    assert "SECRETTOKEN" not in out and "secretkey" not in out

@@ -2,7 +2,8 @@
 GreenField Smart Farming App — app.py v7
 Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profile Photo | Full CRUD
 """
-import os, sqlite3, json, hashlib, hmac, secrets, base64, string
+import os
+import requests, sqlite3, json, hashlib, hmac, secrets, base64, string
 from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -32,7 +33,10 @@ MAIL_SERVER   = os.environ.get("MAIL_SERVER", "")
 MAIL_PORT     = int(os.environ.get("MAIL_PORT", "587"))
 MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
 MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
-MAIL_ENABLED  = bool(MAIL_SERVER and MAIL_USERNAME and MAIL_PASSWORD)
+# Render's free plan blocks SMTP ports (25/465/587), so the recommended way is an HTTPS mail API (Brevo).
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+MAIL_FROM     = os.environ.get("MAIL_FROM", "") or MAIL_USERNAME      # must be a sender verified at Brevo
+MAIL_ENABLED  = bool(BREVO_API_KEY and MAIL_FROM) or bool(MAIL_SERVER and MAIL_USERNAME and MAIL_PASSWORD)
 APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
@@ -456,14 +460,15 @@ def send_reset_email(to_email, name, reset_link):
         print("=" * 60)
         return True
 
-    import smtplib
+    import smtplib, html as _html
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
+    name = _html.escape(str(name or ""))[:80]
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Reset your GreenField password"
-        msg["From"] = MAIL_USERNAME
+        msg["From"] = MAIL_FROM or MAIL_USERNAME
         msg["To"] = to_email
 
         text_body = f"""Hi {name},
@@ -492,6 +497,19 @@ If you didn't request this, you can safely ignore this email.
           you can safely ignore this email.</p>
         </div>
         """
+        if BREVO_API_KEY and MAIL_FROM:
+            r = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={"api-key": BREVO_API_KEY, "accept": "application/json"},
+                json={"sender": {"name": "GreenField", "email": MAIL_FROM},
+                      "to": [{"email": to_email}],
+                      "subject": "Reset your GreenField password",
+                      "htmlContent": html_body, "textContent": text_body},
+                timeout=10)
+            if r.status_code in (200, 201, 202):
+                return True
+            print(f"[PASSWORD RESET] Mail API refused the message: HTTP {r.status_code}")
+            return False
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 

@@ -112,7 +112,8 @@ Optional environment variables (use a `.env` file, never commit it):
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Push (`tools/gen_vapid.py` makes keys) |
 | `CRON_TOKEN` | Protects `/api/cron/alerts` |
 | `ADMIN_EMAILS` | Comma-separated admin e-mails |
-| `MAIL_SERVER` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` | Password-reset e-mail |
+| `BREVO_API_KEY` + `MAIL_FROM` | Password-reset e-mail over HTTPS (works on Render's free plan, which blocks SMTP) |
+| `MAIL_SERVER` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` | Optional SMTP fallback for hosts that allow it |
 | `APP_BASE_URL` | Public URL for links in e-mail/push |
 
 ## 🌐 Deployment
