@@ -89,14 +89,14 @@ html[data-theme="dark"] .report-paper .stage-pill{background:rgba(129,199,132,.1
 
   <!-- Action buttons -->
   <div class="report-actions">
-    <button onclick="window.print()" class="btn btn-primary">
+    <button data-click="gfPrint" class="btn btn-primary">
       <i class="fas fa-print"></i> Print / Save PDF
     </button>
     <a class="btn btn-secondary" href="/export/report.pdf"><i class="fas fa-file-pdf"></i> PDF (English)</a>
     <a class="btn btn-secondary" href="/export/expenses.csv"><i class="fas fa-file-csv"></i> Expenses CSV</a>
     <a class="btn btn-secondary" href="/export/irrigation.csv"><i class="fas fa-file-csv"></i> Irrigation CSV</a>
     <a class="btn btn-secondary" href="/export/farms.csv"><i class="fas fa-file-csv"></i> Farms CSV</a>
-    <button onclick="downloadReport()" class="btn btn-secondary">
+    <button data-click="downloadReport" class="btn btn-secondary">
       <i class="fas fa-download"></i> Download HTML
     </button>
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
@@ -280,7 +280,7 @@ html[data-theme="dark"] .report-paper .stage-pill{background:rgba(129,199,132,.1
   </div><!-- /report-paper -->
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function downloadReport() {
   const content = document.getElementById('reportContent').outerHTML;
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">

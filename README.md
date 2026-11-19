@@ -6,7 +6,7 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-51%20passing-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
 
 > Screenshots use demo data, not a real farmer's records.
 
@@ -51,14 +51,14 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
 
 * Per-user data isolation: every farm/record route checks ownership (no IDOR); inputs validated and clipped server-side; parameterized SQL only.
 * CSRF (Origin/Referer) checks, login throttling, hashed one-time reset tokens, sessions invalidated on password change, and Google login only for verified e-mails.
-* Security headers incl. CSP subset (`frame-ancestors`, `base-uri`, `object-src`, `form-action`), magic-byte image checks, push-endpoint allow-list, rate limits on expensive endpoints.
+* Strict Content-Security-Policy (scripts only from this site or with a per-request nonce, no inline handlers, libraries self-hosted), magic-byte image checks, push-endpoint allow-list, rate limits on expensive endpoints.
 * Account deletion removes all of a user's data; dependency versions pinned to patched releases; secret scanning and push protection enabled on GitHub.
 * GitHub Actions run with minimal permissions; `main` is protected against force-push and deletion.
 * Secrets live only in environment variables / GitHub secrets — never in the repo.
 
 ## 🧪 Testing & automation
 
-* **51 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin) run on every push via GitHub Actions.
+* **56 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin) run on every push via GitHub Actions.
 * **Nightly encrypted PostgreSQL backup** (artifact kept 14 days, fails loudly), **keep-alive** and **weather-alert** workflows.
 * Run locally: `python -m pytest -q`
 
@@ -87,7 +87,7 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
                       GitHub Actions: tests · alerts every 3 h · nightly backup · keep-alive
 ```
 
-Main modules: `app.py` (routes, DB wrapper), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline).
+Main modules: `app.py` (routes, DB wrapper), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
 
 ## ⚙️ Run locally
 
@@ -123,7 +123,6 @@ Push to `main` → GitHub Actions runs tests → Render redeploys automatically.
 
 * Better disease accuracy, validated on real field photos
 * Tested restore procedure for the nightly backups
-* Full `script-src` CSP by self-hosting Chart.js / Leaflet / icons
 * SMS alerts (needs a paid gateway); Bangla fonts in the server PDF
 * Soil sensors / yield prediction
 

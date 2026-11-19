@@ -23,7 +23,7 @@
         <div style="margin-top:-48px;margin-bottom:14px;position:relative;display:inline-block">
           <div style="width:96px;height:96px;border-radius:50%;border:4px solid var(--bg-card);box-shadow:0 6px 24px rgba(46,125,50,.3);overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;display:inline-block"
                id="avatarRing"
-               onclick="{% if user.avatar_photo %}openPhotoModal('{{ avatar_url }}'){% else %}document.getElementById('photoInput').click(){% endif %}"
+               {% if user.avatar_photo %}data-click="openPhotoModal" data-args='{{ [avatar_url]|tojson }}'{% else %}data-click="gfClickId" data-args='["photoInput"]'{% endif %}
                title="{% if user.avatar_photo %}Click to view photo{% else %}Click to upload photo{% endif %}">
             {% if user.avatar_photo %}
             <img id="avatarImg" src="{{ avatar_url }}" alt="Profile photo"
@@ -35,9 +35,9 @@
             {% endif %}
           </div>
           <!-- Camera badge -->
-          <div onclick="document.getElementById('photoInput').click()"
+          <div data-click="gfClickId" data-args='["photoInput"]'
                style="position:absolute;bottom:2px;right:2px;width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E7D32,#43A047);display:flex;align-items:center;justify-content:center;border:2.5px solid var(--bg-card);box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer;transition:transform .2s"
-               onmouseenter="this.style.transform='scale(1.15)'" onmouseleave="this.style.transform='scale(1)'">
+               data-hover-in="transform:scale(1.15)" data-hover-out="transform:scale(1)">
             <i class="fas fa-camera" style="color:#fff;font-size:11px"></i>
           </div>
         </div>
@@ -45,7 +45,7 @@
         <!-- Hidden photo upload form -->
         <form id="photoForm" method="POST" enctype="multipart/form-data" style="display:none">
           <input type="hidden" name="action" value="upload_photo">
-          <input type="file" id="photoInput" name="profile_photo" accept="image/*" onchange="submitPhoto(this)">
+          <input type="file" id="photoInput" name="profile_photo" accept="image/*" data-change="submitPhoto" data-args='["$el"]'>
         </form>
 
         <div style="font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.3px">{{ user.name }}</div>
@@ -84,9 +84,9 @@
 
         {% if user.avatar_photo %}
         <div style="margin-top:10px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">
-          <button onclick="openPhotoModal('{{ avatar_url }}')" type="button"
+          <button data-click="openPhotoModal" data-args='{{ [avatar_url]|tojson }}' type="button"
                   style="background:linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08));border:1.5px solid var(--border);color:var(--p-mid);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s"
-                  onmouseenter="this.style.background='linear-gradient(135deg,rgba(46,125,50,.2),rgba(139,195,74,.12))'" onmouseleave="this.style.background='linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08))'">
+                  data-hover-in="background:linear-gradient(135deg,rgba(46,125,50,.2),rgba(139,195,74,.12))" data-hover-out="background:linear-gradient(135deg,rgba(46,125,50,.1),rgba(139,195,74,.08))">
             <i class="fas fa-search-plus"></i> View Photo
           </button>
           <form method="POST" style="display:inline">
@@ -97,9 +97,9 @@
           </form>
         </div>
         {% else %}
-        <button onclick="document.getElementById('photoInput').click()" type="button"
+        <button data-click="gfClickId" data-args='["photoInput"]' type="button"
                 style="margin-top:10px;background:linear-gradient(135deg,#2E7D32,#43A047);color:#fff;border:none;border-radius:9px;padding:8px 18px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(46,125,50,.35);transition:all .2s"
-                onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform='translateY(0)'">
+                data-hover-in="transform:translateY(-2px)" data-hover-out="transform:translateY(0)">
           <i class="fas fa-camera"></i> Upload Photo
         </button>
         {% endif %}
@@ -209,7 +209,7 @@
               <label style="cursor:pointer">
                 <input type="radio" name="avatar_color" value="{{ col }}"
                        {{ 'checked' if (user.avatar_color or '#2E7D32')==col }}
-                       style="display:none" onchange="document.getElementById('avatarCircle').style.background='{{ col }}'"/>
+                       style="display:none" data-change="gfSetBg" data-args='{{ ["avatarCircle", col]|tojson }}'/>
                 <div style="width:30px;height:30px;border-radius:50%;background:{{ col }};
                      border:3px solid {{ '#fff' if (user.avatar_color or '#2E7D32')!=col else col }};
                      box-shadow:0 0 0 2px {{ col }};transition:all .2s"></div>
@@ -274,7 +274,7 @@
               <label>New Password *</label>
               <input type="password" name="new_password" id="newPw"
                      class="form-control" placeholder="Min. 8 characters"
-                     oninput="checkPwStrength(this.value)" required/>
+                     data-input="checkPwStrength" data-args='["$value"]' required/>
               <!-- Strength bar -->
               <div style="margin-top:6px">
                 <div style="background:#E8F5E9;border-radius:99px;height:5px;overflow:hidden">
@@ -341,7 +341,7 @@
           Deleting your account will permanently remove <strong>all your farms, notes,
           fertilizer calculations, and activity logs</strong>. This cannot be undone.
         </p>
-        <button class="btn btn-danger" onclick="openModal('deleteAccountModal')">
+        <button class="btn btn-danger" data-click="openModal" data-args='["deleteAccountModal"]'>
           <i class="fas fa-trash-alt"></i> Delete My Account
         </button>
       </div>
@@ -391,7 +391,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Photo upload — preview then submit
 function submitPhoto(input) {
   if (!input.files || !input.files[0]) return;

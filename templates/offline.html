@@ -27,11 +27,12 @@
   <div class="ic">🌱</div>
   <h1 id="t">You're offline</h1>
   <p id="m">GreenField couldn't reach the internet. Pages you opened earlier are still available, and your saved data is safe on the server.</p>
-  <button class="btn" onclick="location.reload()" id="r">Try again</button>
+  <button class="btn" data-click="gfReload" id="r">Try again</button>
   <a class="btn alt" href="/dashboard" id="d">Open Dashboard</a>
   <small id="s">We'll reconnect automatically as soon as you're back online.</small>
 </div>
-<script>
+<script src="{{ url_for('static',filename='js/ui.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
   // Offline page is static, so translate it from the saved language preference.
   try{
     if((document.cookie.match(/gf_lang=(bn)/)||localStorage.getItem('gf_lang')==='bn')){

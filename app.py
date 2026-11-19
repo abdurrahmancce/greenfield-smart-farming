@@ -664,8 +664,17 @@ def security_headers(resp):
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)")
-    resp.headers.setdefault("Content-Security-Policy",
-        "base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'")
+    nonce = g.get("csp_nonce")
+    script_src = "script-src 'self'" + (f" 'nonce-{nonce}'" if nonce else "")
+    resp.headers.setdefault("Content-Security-Policy", "; ".join([
+        "default-src 'self'",
+        script_src,                                   # no CDN scripts, no inline handlers, no eval
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: blob: https:",          # OpenStreetMap tiles, Google profile photos
+        "connect-src 'self' https://nominatim.openstreetmap.org",
+        "worker-src 'self'", "manifest-src 'self'", "media-src 'self' blob:",
+        "base-uri 'self'", "object-src 'none'", "frame-ancestors 'self'", "form-action 'self'"]))
     if request.path.startswith(("/account/", "/profile")) or "attachment" in resp.headers.get("Content-Disposition", ""):
         resp.headers["Cache-Control"] = "no-store"
     if _IS_HTTPS:
@@ -703,6 +712,12 @@ def current_user():
     return user
 
 # Inject user into every template automatically
+def _csp_nonce():
+    """One random nonce per request; templates put it on their inline <script> tags."""
+    if "csp_nonce" not in g:
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
 @app.context_processor
 def inject_user():
     lang = session.get("lang", "en")
@@ -712,7 +727,7 @@ def inject_user():
         photo = user["avatar_photo"]
         ver = hashlib.md5((str(len(photo)) + photo[-200:]).encode(), usedforsecurity=False).hexdigest()[:8]
         avatar_url = url_for("avatar", uid=user["id"], v=ver)
-    return {
+    return {"csp_nonce": _csp_nonce(), 
         "current_user": user,
         "lang": lang,
         "is_bn": lang == "bn",

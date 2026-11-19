@@ -130,14 +130,14 @@
               <td>
                 <div class="td-actions">
                   <button class="btn btn-secondary btn-sm btn-icon" title="Edit"
-                    onclick="editCalc({{ h.id }})">
+                    data-click="editCalc" data-args='{{ [h.id]|tojson }}'>
                     <i class="fas fa-edit"></i>
                   </button>
                   <form id="del-fert-{{ h.id }}"
                     action="{{ url_for('delete_fertilizer', rid=h.id) }}"
                     method="POST" style="display:none"></form>
                   <button class="btn btn-danger btn-sm btn-icon" title="Delete"
-                    onclick="if(confirm('Delete this record?')) document.getElementById('del-fert-{{ h.id }}').submit()">
+                    data-click="gfConfirmSubmit" data-args='{{ ["Delete this record?", "del-fert-" ~ h.id]|tojson }}'>
                     <i class="fas fa-trash"></i>
                   </button>
                 </div>
@@ -200,7 +200,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 /* ── Calculator → save via API ───────────────────────────── */
 document.getElementById('fertForm').addEventListener('submit', async function(e) {
   e.preventDefault();

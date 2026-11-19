@@ -49,10 +49,10 @@
 </div>
 
 <div class="filter-bar">
-  <button class="filter-btn active" onclick="filterCrops('all',this)">All Crops</button>
-  <button class="filter-btn" onclick="filterCrops('up',this)">📈 Rising</button>
-  <button class="filter-btn" onclick="filterCrops('down',this)">📉 Falling</button>
-  <button class="filter-btn" onclick="filterCrops('stable',this)">➡️ Stable</button>
+  <button class="filter-btn active" data-click="filterCrops" data-args='["all","$el"]'>All Crops</button>
+  <button class="filter-btn" data-click="filterCrops" data-args='["up","$el"]'>📈 Rising</button>
+  <button class="filter-btn" data-click="filterCrops" data-args='["down","$el"]'>📉 Falling</button>
+  <button class="filter-btn" data-click="filterCrops" data-args='["stable","$el"]'>➡️ Stable</button>
 </div>
 
 <div class="market-grid" id="marketGrid">
@@ -102,7 +102,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function filterCrops(trend, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');

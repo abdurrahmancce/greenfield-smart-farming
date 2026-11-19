@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script>
+  <script nonce="{{ csp_nonce }}">
     (function() {
       var saved = localStorage.getItem('gf-theme');
       if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}"/>
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
   <style>
@@ -339,7 +339,7 @@
 
 <!-- Photo preview modal -->
 <div id="photoModal">
-  <button class="pm-close" onclick="closePhotoModal()" aria-label="Close">&times;</button>
+  <button class="pm-close" data-click="closePhotoModal" aria-label="Close">&times;</button>
   <img id="photoModalImg" src="" alt="Profile photo"/>
 </div>
 
@@ -421,7 +421,7 @@
         {% if current_user.avatar_photo %}
           <div class="sb-user-photo">
             <img src="{{ avatar_url }}" alt="{{ current_user.name }}"
-                 onclick="event.preventDefault();openPhotoModal('{{ avatar_url }}')"/>
+                 data-click="openPhotoModal" data-prevent data-args='{{ [avatar_url]|tojson }}'/>
           </div>
         {% else %}
           <div class="sb-user-init" style="background:{{ current_user.avatar_color or '#2E7D32' }}">
@@ -453,11 +453,11 @@
 
         {% if current_user %}
         <div class="user-menu" id="userMenu">
-          <button class="user-btn" onclick="toggleMenu()" aria-label="User menu">
+          <button class="user-btn" data-click="toggleMenu" aria-label="User menu">
             {% if current_user.avatar_photo %}
               <div class="gf-avatar" style="border-color:var(--p-pale)">
                 <img src="{{ avatar_url }}" alt="{{ current_user.name }}"
-                     onclick="event.stopPropagation();openPhotoModal('{{ avatar_url }}')"/>
+                     data-click="openPhotoModal" data-stop data-args='{{ [avatar_url]|tojson }}'/>
               </div>
             {% else %}
               <div class="gf-avatar" style="background:{{ current_user.avatar_color or '#2E7D32' }};border-color:rgba(255,255,255,.3)">
@@ -473,7 +473,7 @@
               {% if current_user.avatar_photo %}
                 <div class="ud-photo">
                   <img src="{{ avatar_url }}" alt="{{ current_user.name }}"
-                       style="cursor:pointer" onclick="openPhotoModal('{{ avatar_url }}')"/>
+                       style="cursor:pointer" data-click="openPhotoModal" data-args='{{ [avatar_url]|tojson }}'/>
                 </div>
               {% else %}
                 <div class="ud-photo-init" style="background:{{ current_user.avatar_color or '#2E7D32' }}">
@@ -529,11 +529,12 @@
   </div>
 </div>
 
+<script src="{{ url_for('static',filename='js/ui.js') }}"></script>
 <script src="{{ url_for('static',filename='js/app.js') }}"></script>
 <meta name="gf-uid" content="{{ session.get('user_id','') }}">
 <meta name="gf-lang" content="{{ lang|default('en') }}">
 <script src="{{ url_for('static',filename='js/offline-sync.js') }}" defer></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 // ── Sidebar toggle ──
 const hamburgerBtn = document.getElementById('hamburgerBtn');
 const sidebar      = document.getElementById('sidebar');
@@ -633,7 +634,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closePhotoMo
 
 {% block scripts %}{% endblock %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // PWA
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js", {scope: "/"})

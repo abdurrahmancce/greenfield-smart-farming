@@ -65,16 +65,16 @@ html[data-theme="dark"] .season-card .sc-months{color:#B7CDB8}
 <div class="cal-header">
   {% for m in months %}
   <button class="month-pill {{ 'current' if m == current_month }}"
-          onclick="filterMonth('{{ m }}', this)">{{ m }}</button>
+          data-click="filterMonth" data-args='{{ [m, '$el']|tojson }}'>{{ m }}</button>
   {% endfor %}
-  <button class="month-pill" onclick="filterMonth('all', this)">All</button>
+  <button class="month-pill" data-click="filterMonth" data-args='["all","$el"]'>All</button>
 </div>
 
 <!-- Filter by action -->
 <div class="filter-bar2">
-  <button class="filter-btn2 active" onclick="filterAction('all',this)">All Crops</button>
-  <button class="filter-btn2" onclick="filterAction('sow',this)">🌱 Sow Now</button>
-  <button class="filter-btn2" onclick="filterAction('harvest',this)">✂️ Harvest Now</button>
+  <button class="filter-btn2 active" data-click="filterAction" data-args='["all","$el"]'>All Crops</button>
+  <button class="filter-btn2" data-click="filterAction" data-args='["sow","$el"]'>🌱 Sow Now</button>
+  <button class="filter-btn2" data-click="filterAction" data-args='["harvest","$el"]'>✂️ Harvest Now</button>
 </div>
 
 <!-- Crop cards -->
@@ -126,7 +126,7 @@ html[data-theme="dark"] .season-card .sc-months{color:#B7CDB8}
   {% endfor %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 let activeMonth = '{{ current_month }}';
 let activeAction = 'all';
 

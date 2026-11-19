@@ -63,14 +63,14 @@
         <div style="margin-top:16px">
           <p class="text-muted fs-12" style="margin-bottom:8px"><i class="fas fa-bolt"></i> Quick symptoms:</p>
           <div style="display:flex;flex-wrap:wrap;gap:6px">
-            <span class="chip" onclick="addSymptom('brown spots')">Brown spots</span>
-            <span class="chip" onclick="addSymptom('yellow leaves')">Yellow leaves</span>
-            <span class="chip" onclick="addSymptom('white powder')">White powder</span>
-            <span class="chip" onclick="addSymptom('wilting')">Wilting</span>
-            <span class="chip" onclick="addSymptom('rust colored pustules')">Rust pustules</span>
-            <span class="chip" onclick="addSymptom('water soaked lesion')">Water-soaked</span>
-            <span class="chip" onclick="addSymptom('curling leaves')">Leaf curl</span>
-            <span class="chip" onclick="addSymptom('black spots')">Black spots</span>
+            <span class="chip" data-click="addSymptom" data-args='["brown spots"]'>Brown spots</span>
+            <span class="chip" data-click="addSymptom" data-args='["yellow leaves"]'>Yellow leaves</span>
+            <span class="chip" data-click="addSymptom" data-args='["white powder"]'>White powder</span>
+            <span class="chip" data-click="addSymptom" data-args='["wilting"]'>Wilting</span>
+            <span class="chip" data-click="addSymptom" data-args='["rust colored pustules"]'>Rust pustules</span>
+            <span class="chip" data-click="addSymptom" data-args='["water soaked lesion"]'>Water-soaked</span>
+            <span class="chip" data-click="addSymptom" data-args='["curling leaves"]'>Leaf curl</span>
+            <span class="chip" data-click="addSymptom" data-args='["black spots"]'>Black spots</span>
           </div>
         </div>
       </div>
@@ -144,7 +144,7 @@
           <div style="font-size:48px;margin-bottom:12px">🤔</div>
           <h3>No Match Found</h3>
           <p class="text-muted fs-13" style="margin-top:8px" id="noMatchMsg"></p>
-          <button class="btn btn-outline" style="margin-top:16px" onclick="resetForm()">Try Again</button>
+          <button class="btn btn-outline" style="margin-top:16px" data-click="resetForm">Try Again</button>
         </div>
       </div>
     </div>
@@ -202,7 +202,7 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:768px){div[style*="grid-template-columns:1fr 1.4fr"]{grid-template-columns:1fr!important}}
 </style>
-<script>
+<script nonce="{{ csp_nonce }}">
 function addSymptom(text){const ta=document.getElementById('symptoms');ta.value=ta.value?ta.value+', '+text:text;ta.focus()}
 document.getElementById('farmLink')?.addEventListener('change',function(){const crop=this.options[this.selectedIndex]?.dataset.crop;if(crop){const sel=document.getElementById('cropType');for(let o of sel.options)if(o.value===crop.toLowerCase()){sel.value=o.value;break}}});
 document.getElementById('diseaseForm').addEventListener('submit',async function(e){

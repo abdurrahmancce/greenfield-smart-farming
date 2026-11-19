@@ -2,7 +2,7 @@
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}{{ 'ড্যাশবোর্ড' if is_bn else 'Dashboard' }}{% endblock %}
 {% block page_sub %}{{ 'স্বাগতম! আপনার খামারের আজকের আপডেট দেখুন।' if is_bn else "Welcome back! Here's what's happening on your farms today." }}{% endblock %}
-{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
+{% block head %}<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.js') }}"></script>{% endblock %}
 
 {% block content %}
 <!-- Stat Cards -->
@@ -180,7 +180,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function(){
   var BN = {{ 'true' if is_bn else 'false' }}, box = document.getElementById('tasksBox');
   function T(en,bn){return BN?bn:en;}

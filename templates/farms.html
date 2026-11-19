@@ -52,12 +52,12 @@
             <div class="td-actions">
               <!-- EDIT: JS fetches /api/farm/id, fills modal, opens it -->
               <button class="btn btn-secondary btn-sm btn-icon" title="Edit"
-                onclick="editFarm({{ f.id }})">
+                data-click="editFarm" data-args='{{ [f.id]|tojson }}'>
                 <i class="fas fa-edit"></i>
               </button>
               <!-- DELETE: JS confirms then submits hidden form -->
               <button class="btn btn-danger btn-sm btn-icon" title="Delete"
-                onclick="deleteFarm({{ f.id }}, '{{ f.farm_name|replace("'","\\'") }}')">
+                data-click="deleteFarm" data-args='{{ [f.id, f.farm_name]|tojson }}'>
                 <i class="fas fa-trash"></i>
               </button>
               <form id="del-farm-{{ f.id }}"
@@ -153,11 +153,11 @@
 </div>
 
 <!-- Leaflet.js — free, no API key needed -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}"/>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
 
 <!-- Farm locations JSON for map -->
-<script>
+<script nonce="{{ csp_nonce }}">
 const FARM_LOCATIONS = {{ farms | map(attribute="location") | list | tojson }};
 const FARM_NAMES     = {{ farms | map(attribute="farm_name") | list | tojson }};
 const FARM_CROPS     = {{ farms | map(attribute="crop_type") | list | tojson }};
@@ -312,7 +312,7 @@ const FARM_CROPS     = {{ farms | map(attribute="crop_type") | list | tojson }};
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 /* ── Real Farm Map — Leaflet.js + OpenStreetMap Nominatim (free, no key) ── */
 async function geocodeCity(city) {
   const cacheKey = 'geo_' + city.toLowerCase().trim();

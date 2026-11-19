@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}"/>
   <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
   <style>
     body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#071f09 0%,#1B5E20 45%,#43A047 100%);padding:20px;position:relative;overflow:hidden}
@@ -103,7 +103,7 @@
           <i class="fas fa-lock"></i>
           <input type="password" name="password" id="pw" class="form-control"
                  placeholder="Your password" required/>
-          <button type="button" class="pw-toggle" onclick="togglePw('pw','eyeIcon')">
+          <button type="button" class="pw-toggle" data-click="togglePw" data-args='["pw","eyeIcon"]'>
             <i class="fas fa-eye" id="eyeIcon"></i>
           </button>
         </div>
@@ -143,7 +143,8 @@
   </div>
 </div>
 
-<script>
+<script src="{{ url_for('static',filename='js/ui.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
 function togglePw(inputId, iconId) {
   const inp  = document.getElementById(inputId);
   const icon = document.getElementById(iconId);

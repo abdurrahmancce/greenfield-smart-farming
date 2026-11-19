@@ -2,7 +2,7 @@
 {% block title %}Analytics{% endblock %}
 {% block page_title %}{{ 'বিশ্লেষণ' if is_bn else 'Analytics' }}{% endblock %}
 {% block page_sub %}{{ 'আপনার খামারের পারফরম্যান্স ও ডেটা বিশ্লেষণ' if is_bn else 'Real insights from your farm data and performance.' }}{% endblock %}
-{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
+{% block head %}<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.js') }}"></script>{% endblock %}
 
 {% block content %}
 
@@ -220,12 +220,12 @@
 </div>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // ── Chart helpers ──
 const COLORS = ['#2E7D32','#1565C0','#F57F17','#6A1B9A','#00695C','#AD1457','#4E342E'];
 function mkLine(id, labels, data, label, color) {
   const el = document.getElementById(id);
-  if (!el) return;
+  if (!el || Chart.getChart(el)) return;   // app.js may already have drawn it
   new Chart(el, {type:'line', data:{labels, datasets:[{label, data,
     borderColor:color, backgroundColor:color+'22', borderWidth:2.5,
     pointBackgroundColor:color, pointRadius:4, fill:true, tension:.35}]},
@@ -236,7 +236,7 @@ function mkLine(id, labels, data, label, color) {
 }
 function mkBar(id, labels, data, label, color) {
   const el = document.getElementById(id);
-  if (!el) return;
+  if (!el || Chart.getChart(el)) return;   // app.js may already have drawn it
   new Chart(el, {type:'bar', data:{labels, datasets:[{label, data,
     backgroundColor:color+'cc', borderColor:color, borderWidth:1.5, borderRadius:6}]},
     options:{responsive:true, maintainAspectRatio:false,
@@ -245,7 +245,7 @@ function mkBar(id, labels, data, label, color) {
 }
 function mkPie(id, labels, data) {
   const el = document.getElementById(id);
-  if (!el) return;
+  if (!el || Chart.getChart(el)) return;   // app.js may already have drawn it
   new Chart(el, {type:'doughnut', data:{labels,
     datasets:[{data, backgroundColor:COLORS.slice(0,labels.length),
                borderWidth:2, borderColor:'#fff'}]},
@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Finance chart (dual: income + expense)
   const fc = document.getElementById('chartFinance');
-  if (fc) {
+  if (fc && !Chart.getChart(fc)) {
     const labels  = JSON.parse(fc.dataset.labels||'[]');
     const income  = JSON.parse(fc.dataset.income||'[]');
     const expense = JSON.parse(fc.dataset.expense||'[]');

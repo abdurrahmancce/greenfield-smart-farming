@@ -278,7 +278,7 @@ function initCharts() {
 
   function data(id) {
     const el = document.getElementById(id);
-    if (!el) return null;
+    if (!el || Chart.getChart(el)) return null;
     return { labels: JSON.parse(el.dataset.labels||"[]"), values: JSON.parse(el.dataset.values||"[]") };
   }
 

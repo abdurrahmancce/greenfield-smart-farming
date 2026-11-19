@@ -116,7 +116,7 @@
             <div class="note-actions">
               <!-- Edit button — calls editNote(id) in JS -->
               <button class="btn btn-secondary btn-sm btn-icon" title="Edit"
-                onclick="editNote({{ n.id }})">
+                data-click="editNote" data-args='{{ [n.id]|tojson }}'>
                 <i class="fas fa-edit"></i>
               </button>
               <!-- Delete hidden form -->
@@ -124,7 +124,7 @@
                 action="{{ url_for('delete_note', nid=n.id) }}"
                 method="POST" style="display:none"></form>
               <button class="btn btn-danger btn-sm btn-icon" title="Delete"
-                onclick="deleteNote({{ n.id }})">
+                data-click="deleteNote" data-args='{{ [n.id]|tojson }}'>
                 <i class="fas fa-trash"></i>
               </button>
             </div>
