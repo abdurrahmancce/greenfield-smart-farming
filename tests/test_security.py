@@ -164,3 +164,4 @@ def test_reset_mail_api_failure_returns_false_without_leaking(client, monkeypatc
     assert A.send_reset_email("a@x.co", "A", "https://x/reset-password/SECRETTOKEN") is False
     out = capsys.readouterr().out
     assert "SECRETTOKEN" not in out and "secretkey" not in out
+    assert "HTTP 401" in out

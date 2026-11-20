@@ -540,7 +540,11 @@ If you didn't request this, you can safely ignore this email.
                 timeout=10)
             if r.status_code in (200, 201, 202):
                 return True
-            print(f"[PASSWORD RESET] Mail API refused the message: HTTP {r.status_code}")
+            try:                                   # Brevo explains the refusal ("unauthorized", "invalid_parameter"...); no secrets in it
+                why = str((r.json() or {}).get("message", ""))[:160]
+            except Exception:
+                why = ""
+            print(f"[PASSWORD RESET] Mail API refused the message: HTTP {r.status_code} {why}")
             return False
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
@@ -2502,7 +2506,10 @@ def admin_panel():
     conn.close()
     mx = max([s["n"] for s in signups] or [1])
     return render_template("admin.html", users=users, feats=feats, signups=signups, crops=crops, mx=mx, area=area,
-                           push_on=PUSH_ENABLED, mail_on=MAIL_ENABLED, gem=bool(os.environ.get("GEMINI_API_KEY")),
+                           push_on=PUSH_ENABLED, mail_on=MAIL_ENABLED,
+                           mail_how=("Brevo API (HTTPS)" if (BREVO_API_KEY and MAIL_FROM) else
+                                     "SMTP - blocked on Render's free plan, use BREVO_API_KEY + MAIL_FROM" if MAIL_ENABLED else ""),
+                           brevo_half=bool(BREVO_API_KEY) != bool(MAIL_FROM) and not (BREVO_API_KEY and MAIL_FROM), gem=bool(os.environ.get("GEMINI_API_KEY")),
                            wx=bool(OPENWEATHER_KEY), when=now.strftime("%d %b %Y %H:%M"))
 
 
