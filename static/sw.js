@@ -54,7 +54,7 @@ async function handleNavigation(req) {
     return fetch(req).catch(() => caches.match('/offline'));
   }
   // Never keep account pages / downloads in the offline cache.
-  if (url.pathname.startsWith('/account') || url.pathname === '/profile') {
+  if (url.pathname.startsWith('/account') || url.pathname.startsWith('/sensors/') || url.pathname === '/profile') {
     return fetch(req).catch(() => caches.match('/offline'));
   }
 

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Soil Sensors','মাটির সেন্সর') }}{% endblock %}
+{% block page_title %}📡 {{ tr('Soil Sensors','মাটির সেন্সর') }}{% endblock %}
+{% block page_sub %}{{ tr('Soil moisture readings from a sensor — or typed in by hand','সেন্সর থেকে (বা হাতে লেখা) মাটির আর্দ্রতার রিডিং') }}{% endblock %}
+
+{% block head %}
+<style>
+.sn-grid{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:18px;align-items:start}
+@media(max-width:900px){.sn-grid{grid-template-columns:1fr}}
+.sn-note{font-size:12.5px;color:var(--muted);line-height:1.55}
+.sn-big{font-size:30px;font-weight:800;line-height:1}
+.sn-dry{color:#C62828}.sn-ok{color:#2E7D32}.sn-wet{color:#1565C0}
+.sn-tok{font-family:monospace;font-size:13px;background:var(--bg);border:1px dashed var(--border);border-radius:8px;padding:10px;word-break:break-all}
+.sn-code{font-family:monospace;font-size:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;overflow-x:auto;white-space:pre}
+.sn-dev{margin-bottom:16px}
+.sn-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:10px}
+.sn-chart{position:relative;height:190px}
+.sn-warn{background:#FFF8E1;border:1px solid #FFE082;color:#6D4C00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5}
+</style>
+{% endblock %}
+
+{% block content %}
+{% if new_token %}
+<div class="card" style="margin-bottom:16px;border:2px solid #2E7D32">
+  <div class="card-header"><h3 class="card-title">🔑 {{ tr('Token for','টোকেন:') }} “{{ new_device }}”</h3></div>
+  <div class="card-body">
+    <div class="sn-warn" style="margin-bottom:10px">{{ tr('Copy it now. For safety it is shown only once and cannot be recovered — if you lose it, delete the sensor and add a new one.',
+      'এখনই কপি করুন। নিরাপত্তার জন্য এটি একবারই দেখানো হয়, পরে আর দেখা যাবে না — হারালে সেন্সর মুছে নতুন যোগ করুন।') }}</div>
+    <div class="sn-tok" id="newTok">{{ new_token }}</div>
+    <div style="margin-top:10px"><button type="button" class="btn btn-primary btn-sm" data-click="gfCopy" data-args='["newTok"]'><i class="fas fa-copy"></i> {{ tr('Copy token','টোকেন কপি করুন') }}</button></div>
+    <p class="sn-note" style="margin:12px 0 6px">{{ tr('Send readings to this address (HTTPS POST, JSON):','এই ঠিকানায় রিডিং পাঠান (HTTPS POST, JSON):') }}</p>
+    <div class="sn-code">curl -X POST {{ base_url }}/api/sensor/ingest \
+  -H "Authorization: Bearer {{ new_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{"moisture": 42.5, "temp": 28.1}'</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="sn-grid">
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> {{ tr('Add a sensor','সেন্সর যোগ করুন') }}</h3></div>
+      <div class="card-body">
+        {% if farms %}
+        <form method="POST" action="{{ url_for('sensors_add') }}">
+          <div class="form-group"><label class="form-label">{{ tr('Farm','খামার') }}</label>
+            <select name="farm_id" class="form-control" required>
+              <option value="">— {{ tr('Select Farm','খামার বাছুন') }} —</option>
+              {% for f in farms %}<option value="{{ f.id }}">{{ f.farm_name }} ({{ f.crop_type }})</option>{% endfor %}
+            </select></div>
+          <div class="form-group"><label class="form-label">{{ tr('Sensor name','সেন্সরের নাম') }}</label>
+            <input name="name" class="form-control" maxlength="40" placeholder="{{ tr('e.g. North plot probe','যেমন: উত্তর জমির প্রোব') }}"/></div>
+          <button class="btn btn-primary" type="submit"><i class="fas fa-satellite-dish"></i> {{ tr('Create sensor','সেন্সর তৈরি করুন') }}</button>
+          <p class="sn-note" style="margin-top:8px">{{ tr('Up to','সর্বোচ্চ') }} {{ max_devices }} {{ tr('sensors per account.','টি সেন্সর।') }}</p>
+        </form>
+        {% else %}
+        <p class="sn-note">{{ tr('Add a farm first (Farm Management).','আগে একটি খামার যোগ করুন (খামার ব্যবস্থাপনা)।') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-info-circle"></i> {{ tr('How it works','কীভাবে কাজ করে') }}</h3></div>
+      <div class="card-body sn-note">
+        <p>{{ tr('Each sensor has its own secret token. A device (for example an ESP32 with a soil-moisture probe) sends readings with that token; they appear here and in your Today’s Tasks.',
+                 'প্রতিটি সেন্সরের নিজস্ব গোপন টোকেন আছে। ডিভাইস (যেমন মাটির আর্দ্রতা-প্রোবসহ ESP32) সেই টোকেন দিয়ে রিডিং পাঠায়; রিডিং এখানে ও “আজকের কাজ”-এ আসে।') }}</p>
+        <p>{{ tr('Rules (generic, not crop-specific):','নিয়ম (সাধারণ, ফসল-ভিত্তিক নয়):') }}
+           <b class="sn-dry">&lt; {{ dry }}%</b> {{ tr('dry → irrigate (and a push alert).','শুকনো → সেচ দিন (সঙ্গে পুশ অ্যালার্ট)।') }}
+           <b class="sn-wet">&gt; {{ wet }}%</b> {{ tr('waterlogged → hold irrigation.','অতিরিক্ত ভেজা → সেচ বন্ধ রাখুন।') }}
+           {{ tr('Only readings from the last','শুধু গত') }} {{ fresh_h }} {{ tr('hours are used.','ঘণ্টার রিডিং ধরা হয়।') }}</p>
+        <p class="sn-warn">{{ tr('Sensors differ and need calibrating against your own soil, so treat the percentages as a guide. The server side is tested; the ESP32 sketch in tools/ has not been tested on real hardware.',
+                 'সেন্সরভেদে মান আলাদা, তাই নিজের মাটির সঙ্গে মিলিয়ে নিন; শতাংশকে দিকনির্দেশনা ধরুন। সার্ভারের অংশ পরীক্ষিত; tools/-এর ESP32 স্কেচ আসল হার্ডওয়্যারে এখনো পরীক্ষা করা হয়নি।') }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    {% if not devices %}
+    <div class="card"><div class="card-body sn-note" style="text-align:center;padding:36px">
+      <div style="font-size:42px">📡</div>
+      {{ tr('No sensors yet. Create one on the left — then send a reading with the command shown, with tools/sensor_simulator.py, or type one in by hand.',
+            'এখনো কোনো সেন্সর নেই। বাঁ দিকে একটি তৈরি করুন — তারপর দেখানো কমান্ড, tools/sensor_simulator.py বা হাতে লিখে রিডিং দিন।') }}
+    </div></div>
+    {% endif %}
+    {% for d in devices %}
+    <div class="card sn-dev">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <h3 class="card-title"><i class="fas fa-seedling"></i> {{ d.name }} <span class="sn-note">· {{ d.farm_name }} · …{{ d.token_hint }}</span></h3>
+        <form method="POST" action="{{ url_for('sensors_delete', did=d.id) }}" data-confirm="{{ tr('Delete this sensor and its readings?','এই সেন্সর ও এর রিডিং মুছবেন?') }}">
+          <button class="btn btn-danger btn-sm btn-icon" type="submit" title="{{ tr('Delete','মুছুন') }}"><i class="fas fa-trash"></i></button>
+        </form>
+      </div>
+      <div class="card-body">
+        {% if d.last %}
+          {% set fresh = d.last.age_h <= fresh_h %}
+          {% set cls = 'sn-dry' if d.last.moisture < dry else ('sn-wet' if d.last.moisture > wet else 'sn-ok') %}
+          <div class="sn-row">
+            <div><div class="sn-big {{ cls }}">{{ '%.0f'|format(d.last.moisture) }}%</div><div class="sn-note">{{ tr('soil moisture','মাটির আর্দ্রতা') }}</div></div>
+            {% if d.last.temp is not none %}<div><div class="sn-big" style="font-size:24px">{{ '%.1f'|format(d.last.temp) }}°C</div><div class="sn-note">{{ tr('temperature','তাপমাত্রা') }}</div></div>{% endif %}
+            <div class="sn-note">{{ d.last.when }} ({{ tr('BD time','বাংলাদেশ সময়') }})<br>
+              {% if d.last.source == 'manual' %}<span class="badge badge-gray">{{ tr('typed in','হাতে লেখা') }}</span>{% else %}<span class="badge badge-teal">{{ tr('device','ডিভাইস') }}</span>{% endif %}
+              {% if not fresh %}<span class="badge badge-amber">{{ tr('older than','পুরোনো —') }} {{ fresh_h }}h</span>{% endif %}</div>
+          </div>
+          {% if fresh and d.last.moisture < dry %}<div class="sn-warn" style="background:#FFEBEE;border-color:#EF9A9A;color:#8E0000;margin-bottom:10px">🏜️ {{ tr('Dry soil — irrigate in the early morning or evening.','মাটি শুকনো — ভোরে বা সন্ধ্যায় সেচ দিন।') }}</div>{% endif %}
+          {% if fresh and d.last.moisture > wet %}<div class="sn-warn" style="background:#E3F2FD;border-color:#90CAF9;color:#0D47A1;margin-bottom:10px">🌊 {{ tr('Very wet — skip irrigation and check drainage.','অনেক ভেজা — সেচ বন্ধ রাখুন, নিকাশি দেখুন।') }}</div>{% endif %}
+          <div class="sn-chart"><canvas id="snc{{ d.id }}"></canvas></div>
+          <script type="application/json" id="snd{{ d.id }}">{{ d.chart|tojson }}</script>
+        {% else %}
+          <p class="sn-note">{{ tr('No readings yet.','এখনো কোনো রিডিং নেই।') }}</p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('sensors_manual_reading', did=d.id) }}" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">
+          <div><label class="form-label">{{ tr('Moisture %','আর্দ্রতা %') }}</label><input type="number" name="moisture" class="form-control" min="0" max="100" step="0.1" required style="width:110px"/></div>
+          <div><label class="form-label">{{ tr('Temp °C (optional)','তাপ °C (ঐচ্ছিক)') }}</label><input type="number" name="temp" class="form-control" min="-20" max="70" step="0.1" style="width:130px"/></div>
+          <button class="btn btn-secondary btn-sm" type="submit"><i class="fas fa-pen"></i> {{ tr('Add reading by hand','হাতে রিডিং দিন') }}</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('DOMContentLoaded', function () {
+  if (typeof Chart === 'undefined') return;
+  document.querySelectorAll('script[id^="snd"]').forEach(function (s) {
+    var id = s.id.slice(3), el = document.getElementById('snc' + id), d;
+    try { d = JSON.parse(s.textContent); } catch (e) { return; }
+    if (!el || !d.labels.length || Chart.getChart(el)) return;
+    var hasTemp = d.temp.some(function (v) { return v !== null; });
+    var sets = [{label: 'Moisture %', data: d.moisture, borderColor: '#1565C0', backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: .3, pointRadius: 1.5, yAxisID: 'y'}];
+    if (hasTemp) sets.push({label: 'Temp °C', data: d.temp, borderColor: '#EF6C00', tension: .3, pointRadius: 1.5, yAxisID: 'y1'});
+    new Chart(el, {type: 'line', data: {labels: d.labels, datasets: sets},
+      options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+        scales: {y: {min: 0, max: 100, title: {display: true, text: '%'}}, y1: {display: hasTemp, position: 'right', grid: {drawOnChartArea: false}},
+                 x: {ticks: {maxTicksLimit: 6}}}}});
+  });
+});
+</script>
+{% endblock %}

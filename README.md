@@ -6,7 +6,7 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-81%20passing-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
 
 > Screenshots use demo data, not a real farmer's records.
 
@@ -28,6 +28,8 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 * **Push alerts** — Web Push (VAPID) for rain, heat, fungal risk, harvest approaching/ready, irrigation due / not needed. Sent by a GitHub Actions job every 3 hours, de-duplicated, with a one-tap test alert.
 * **Works without signal** — expenses and irrigation entered offline are stored on the phone and synced automatically when the connection returns, with per-entry IDs so nothing is saved twice.
 * **AI crop-disease photo check** — Gemini vision, two-model cross-check, multi-photo scans, deliberately humble confidence labels, and a measured accuracy script (`tools/eval_disease.py`).
+* **Soil sensors** — each sensor gets its own secret token; a device (or the included simulator, or a hand-typed reading) sends soil moisture/temperature over HTTPS. Readings are charted, drive a "soil is dry — irrigate" task and push alert (and quiet the schedule-based nudge when the soil is fine). The server side is tested; the ESP32 sketch in `tools/` has **not** been run on real hardware.
+* **Yield & profit/loss forecast** — plain arithmetic, not ML: area × yield per acre × price − costs, shown as a low / typical / high range with a break-even yield and price. Built-in yield ranges are rough Bangladesh figures that are *not* checked against official statistics, so every farm can enter its own yield, price and remaining costs. The page says plainly that it is an estimate.
 * **Money tracking** — income/expense log, per-farm profit & loss, per-acre figures, monthly trend, cost breakdown.
 * **Farm tools** — farms with map location, growth tracker, irrigation log, notes, crop calendar, NPK fertilizer calculator, weather, analytics.
 * **Market prices you can trust** — labelled reference values plus prices *you* record; trends only when there is enough real data.
@@ -58,7 +60,7 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
 
 ## 🧪 Testing & automation
 
-* **56 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin) run on every push via GitHub Actions.
+* **81 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin, CSP, soil sensors, forecast) run on every push via GitHub Actions.
 * **Nightly encrypted PostgreSQL backup** (artifact kept 14 days, fails loudly), **keep-alive** and **weather-alert** workflows.
 * Run locally: `python -m pytest -q`
 
@@ -87,7 +89,7 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
                       GitHub Actions: tests · alerts every 3 h · nightly backup · keep-alive
 ```
 
-Main modules: `app.py` (routes, DB wrapper), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
+Main modules: `app.py` (routes, DB wrapper), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `forecast.py` (yield/profit arithmetic), `tools/sensor_simulator.py` + `tools/esp32_soil_sensor.ino` (sensor demo), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
 
 ## ⚙️ Run locally
 
@@ -125,7 +127,8 @@ Push to `main` → GitHub Actions runs tests → Render redeploys automatically.
 * Better disease accuracy, validated on real field photos
 * Tested restore procedure for the nightly backups
 * SMS alerts (needs a paid gateway); Bangla fonts in the server PDF
-* Soil sensors / yield prediction
+* Real-hardware test of the soil sensor sketch; sensor calibration per crop
+* Check the forecast's yield table against official statistics
 
 ## 👨‍💻 Author
 

@@ -51,6 +51,14 @@
   window.gfPrint = function () { window.print(); };
   window.gfClickId = function (id) { var e = document.getElementById(id); if (e) e.click(); };
   window.gfSetBg = function (id, color) { var e = document.getElementById(id); if (e) e.style.background = color; };
+  window.gfCopy = function (id) {
+    var e = document.getElementById(id); if (!e) return;
+    var t = e.textContent.trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).catch(function () {}); return; }
+    var r = document.createRange(); r.selectNodeContents(e);
+    var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    try { document.execCommand('copy'); } catch (x) {}
+  };
   window.gfConfirmSubmit = function (msg, formId) {
     if (window.confirm(msg)) { var f = document.getElementById(formId); if (f) f.submit(); }
   };

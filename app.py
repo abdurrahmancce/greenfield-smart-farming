@@ -4,12 +4,12 @@ Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profi
 """
 import os
 import requests, sqlite3, json, hashlib, hmac, secrets, base64, string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (Flask, render_template, request, redirect,
                    url_for, jsonify, flash, session, Response, abort,
-                   g, has_request_context)
+                   g, has_request_context, make_response)
 import i18n
 import vision
 import farm_tasks
@@ -425,6 +425,38 @@ def init_db():
             date        TEXT    NOT NULL,
             created_at  TEXT    DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS sensor_devices (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            farm_id    INTEGER NOT NULL,
+            name       TEXT    NOT NULL,
+            token_hash TEXT    NOT NULL UNIQUE,
+            token_hint TEXT    DEFAULT '',
+            created_at TEXT    DEFAULT '',
+            last_seen  TEXT    DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS sensor_readings (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id  INTEGER NOT NULL,
+            farm_id    INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            moisture   REAL    NOT NULL,
+            temp       REAL,
+            source     TEXT    DEFAULT 'device',
+            created_at TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sensor_readings_farm ON sensor_readings (farm_id, id);
+        CREATE INDEX IF NOT EXISTS idx_sensor_readings_dev ON sensor_readings (device_id, id);
+        CREATE TABLE IF NOT EXISTS forecast_inputs (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id        INTEGER NOT NULL,
+            farm_id        INTEGER NOT NULL,
+            yield_per_acre REAL,
+            price_per_kg   REAL,
+            remaining_cost REAL,
+            updated_at     TEXT DEFAULT '',
+            UNIQUE (user_id, farm_id)
+        );
     """)
     migrate_db(conn)          # re-run: adds any column a pre-existing table is missing
     backfill_account_ids(conn)  # every account gets a unique Account ID
@@ -658,7 +690,8 @@ def delete_user_data(conn, uid):
     """Remove EVERYTHING that belongs to a user (used by 'delete account')."""
     u = conn.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
     for t in ("expense_log", "irrigation_log", "crop_growth", "crop_notes", "disease_scans",
-              "fertilizer_history", "push_log", "push_subs", "password_resets", "price_history", "offline_sync"):
+              "fertilizer_history", "push_log", "push_subs", "password_resets", "price_history", "offline_sync",
+              "sensor_readings", "sensor_devices", "forecast_inputs"):
         conn.execute(f"DELETE FROM {t} WHERE user_id=?", (uid,))
     if u and u["email"]:                              # the activity log mentions the e-mail address
         conn.execute("DELETE FROM activity_log WHERE detail LIKE ?", ("%" + u["email"] + "%",))
@@ -1405,7 +1438,7 @@ def delete_farm(fid):
         conn.close(); flash("Farm not found or access denied.","error")
         return redirect(url_for("farms"))
     # Manually cascade — remove everything attached to this farm, then the farm itself
-    for t in ("crop_notes","crop_growth","irrigation_log","expense_log"):
+    for t in ("crop_notes","crop_growth","irrigation_log","expense_log","sensor_readings","sensor_devices","forecast_inputs"):
         conn.execute(f"DELETE FROM {t} WHERE farm_id=? AND user_id=?",(fid,uid))
     conn.execute("DELETE FROM farms WHERE id=? AND user_id=?",(fid,uid))
     conn.commit(); conn.close()
@@ -2783,7 +2816,7 @@ def tasks_for_user(uid, lang="en"):
     farms = [dict(r) for r in conn.execute(
         "SELECT id, farm_name, crop_type, location, planting_date, status FROM farms WHERE user_id=? ORDER BY farm_name LIMIT 12",
         (uid,)).fetchall()]
-    info = {}
+    info, soil = {}, {}
     for f in farms:
         g = conn.execute("SELECT expected_days, growth_stage FROM crop_growth WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
                          (f["id"], uid)).fetchone()
@@ -2791,6 +2824,9 @@ def tasks_for_user(uid, lang="en"):
                          (f["id"], uid)).fetchone()
         sc = conn.execute("""SELECT diagnosis, health_status, severity, created_at FROM disease_scans
                              WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1""", (f["id"], uid)).fetchone()
+        sr = conn.execute("SELECT moisture, created_at FROM sensor_readings WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
+                          (f["id"], uid)).fetchone()
+        soil[f["id"]] = {"moisture": float(sr["moisture"]), "age_hours": _age_hours(sr["created_at"])} if sr else None
         info[f["id"]] = (dict(g) if g else None, i["date"] if i else None, dict(sc) if sc else None)
     conn.close()
     active = [f for f in farms if (f.get("status") or "").lower() not in ("harvested", "inactive", "closed")]
@@ -2803,7 +2839,7 @@ def tasks_for_user(uid, lang="en"):
     tasks = []
     for f in active:
         g, li, sc = info[f["id"]]
-        tasks += farm_tasks.build_tasks(f, g, li, sc, wx.get((f["location"] or "").strip()), lang=lang)
+        tasks += farm_tasks.build_tasks(f, g, li, sc, wx.get((f["location"] or "").strip()), lang=lang, soil=soil.get(f["id"]))
     return farm_tasks.sort_tasks(tasks), bool(wx and any(wx.values())), len(active)
 
 @app.route("/api/today-tasks")
@@ -2834,6 +2870,9 @@ def export_my_data():
         "expenses": rows("SELECT * FROM expense_log WHERE user_id=?"),
         "fertilizer_history": rows("SELECT * FROM fertilizer_history WHERE user_id=?"),
         "disease_scans": rows("SELECT id, farm_id, crop, diagnosis, health_status, confidence, severity, created_at FROM disease_scans WHERE user_id=?"),
+        "sensor_devices": rows("SELECT id, farm_id, name, created_at, last_seen FROM sensor_devices WHERE user_id=?"),   # never the token
+        "sensor_readings": rows("SELECT id, device_id, farm_id, moisture, temp, source, created_at FROM sensor_readings WHERE user_id=? ORDER BY id DESC LIMIT 5000"),
+        "forecast_inputs": rows("SELECT farm_id, yield_per_acre, price_per_kg, remaining_cost FROM forecast_inputs WHERE user_id=?"),
     }
     conn.close()
     r = Response(json.dumps(data, ensure_ascii=False, indent=2, default=str), mimetype="application/json")
@@ -2850,9 +2889,9 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT     = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")
 CRON_TOKEN        = os.environ.get("CRON_TOKEN", "")
 PUSH_ENABLED      = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
-PUSH_KINDS        = {"rain_alert", "heat_alert", "fungal", "harvest_now", "harvest_soon", "irrigate", "skip_irrigation"}
+PUSH_KINDS        = {"rain_alert", "heat_alert", "fungal", "harvest_now", "harvest_soon", "irrigate", "skip_irrigation", "soil_dry"}
 # Alerts that would repeat every day are sent once per this many days (default: once a day).
-PUSH_REPEAT_DAYS  = {"harvest_soon": 3, "harvest_now": 2, "irrigate": 2, "skip_irrigation": 1}
+PUSH_REPEAT_DAYS  = {"harvest_soon": 3, "harvest_now": 2, "irrigate": 2, "skip_irrigation": 1, "soil_dry": 1}
 
 @app.route("/api/push/key")
 @login_required
@@ -2994,6 +3033,265 @@ def api_cron_alerts():
         conn.execute("DELETE FROM push_log WHERE day<?", ((datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),))
         conn.commit(); conn.close()
     return jsonify({"users": len(by_user), "sent": sent, "expired": gone})
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SOIL SENSORS  (a device sends readings with its own secret token; the owner sees them here)
+#  No hardware is required: readings can also be typed in by hand or sent by tools/sensor_simulator.py
+# ══════════════════════════════════════════════════════════════════
+import forecast as fc
+
+@app.template_global()
+def tr(en, bn):
+    """Pick the English or Bangla text for the current language (used by the newer pages)."""
+    return bn if session.get("lang") == "bn" else en
+
+@app.template_filter("money")
+def money_filter(v):
+    try:
+        return "৳{:,.0f}".format(float(v))
+    except (TypeError, ValueError):
+        return "—"
+
+def _utcnow_str():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+def _age_hours(created_at):
+    """Hours since a reading (stored as naive UTC text); a huge number if it cannot be read."""
+    try:
+        t = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 9999.0
+    return max(0.0, (datetime.now(timezone.utc) - t).total_seconds() / 3600)
+
+def _bd_label(created_at):
+    """UTC text -> 'MM-DD HH:MM' in Bangladesh time (UTC+6, no daylight saving)."""
+    try:
+        t = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S") + timedelta(hours=6)
+        return t.strftime("%m-%d %H:%M")
+    except ValueError:
+        return ""
+
+MAX_DEVICES_PER_USER = 5
+SENSOR_KEEP_DAYS = 30
+
+def _sensor_base_url():
+    return (APP_BASE_URL or request.host_url).rstrip("/")
+
+def _sensors_context(conn, uid, new_token=None, new_device=None):
+    farms = [dict(r) for r in conn.execute("SELECT id, farm_name, crop_type FROM farms WHERE user_id=? ORDER BY farm_name", (uid,)).fetchall()]
+    since = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+    devices = []
+    for d in conn.execute("""SELECT d.*, f.farm_name FROM sensor_devices d JOIN farms f ON f.id=d.farm_id
+                             WHERE d.user_id=? ORDER BY d.id""", (uid,)).fetchall():
+        d = dict(d)
+        pts = [dict(r) for r in conn.execute(
+            "SELECT moisture, temp, created_at FROM sensor_readings WHERE device_id=? AND user_id=? AND created_at>=? ORDER BY id DESC LIMIT 200",
+            (d["id"], uid, since)).fetchall()][::-1]
+        last = conn.execute("SELECT moisture, temp, source, created_at FROM sensor_readings WHERE device_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
+                            (d["id"], uid)).fetchone()
+        d["last"] = dict(last) if last else None
+        if d["last"]:
+            d["last"]["age_h"] = _age_hours(d["last"]["created_at"])
+            d["last"]["when"] = _bd_label(d["last"]["created_at"])
+        d["chart"] = {"labels": [_bd_label(p["created_at"]) for p in pts],
+                      "moisture": [p["moisture"] for p in pts],
+                      "temp": [p["temp"] for p in pts]}
+        d["token_hint"] = d.get("token_hint") or ""
+        devices.append(d)
+    return {"farms": farms, "devices": devices, "new_token": new_token, "new_device": new_device,
+            "base_url": _sensor_base_url(), "dry": farm_tasks.SOIL_DRY_BELOW, "wet": farm_tasks.SOIL_WET_ABOVE,
+            "fresh_h": farm_tasks.SOIL_FRESH_HOURS, "max_devices": MAX_DEVICES_PER_USER}
+
+@app.route("/sensors")
+@login_required
+def sensors_page():
+    conn = get_db()
+    ctx = _sensors_context(conn, session["user_id"])
+    conn.close()
+    return render_template("sensors.html", **ctx)
+
+@app.route("/sensors/add", methods=["POST"])
+@login_required
+def sensors_add():
+    uid = session["user_id"]
+    conn = get_db()
+    fid = owned_farm_id(conn, uid, request.form.get("farm_id"))
+    name = clip(request.form.get("name"), 40) or "Soil sensor"
+    n = conn.execute("SELECT COUNT(*) AS c FROM sensor_devices WHERE user_id=?", (uid,)).fetchone()["c"]
+    if fid is None:
+        conn.close(); flash("Choose one of your farms.", "error"); return redirect(url_for("sensors_page"))
+    if n >= MAX_DEVICES_PER_USER:
+        conn.close(); flash(f"You can add up to {MAX_DEVICES_PER_USER} sensors.", "error"); return redirect(url_for("sensors_page"))
+    token = "gfs_" + secrets.token_urlsafe(24)
+    conn.execute("INSERT INTO sensor_devices (user_id, farm_id, name, token_hash, token_hint, created_at) VALUES (?,?,?,?,?,?)",
+                 (uid, fid, name, hash_token(token), token[-4:], _utcnow_str()))
+    conn.commit()
+    ctx = _sensors_context(conn, uid, new_token=token, new_device=name)
+    conn.close()
+    resp = make_response(render_template("sensors.html", **ctx))   # the token is shown ONCE, here, and never stored in clear text
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+def _own_device(conn, uid, did):
+    return conn.execute("SELECT * FROM sensor_devices WHERE id=? AND user_id=?", (to_int(did, 1, 2**31 - 1, 0), uid)).fetchone()
+
+@app.route("/sensors/<int:did>/delete", methods=["POST"])
+@login_required
+def sensors_delete(did):
+    uid = session["user_id"]
+    conn = get_db()
+    if _own_device(conn, uid, did):
+        conn.execute("DELETE FROM sensor_readings WHERE device_id=? AND user_id=?", (did, uid))
+        conn.execute("DELETE FROM sensor_devices WHERE id=? AND user_id=?", (did, uid))
+        conn.commit()
+        flash("Sensor removed. Its token no longer works.", "success")
+    conn.close()
+    return redirect(url_for("sensors_page"))
+
+@app.route("/sensors/<int:did>/reading", methods=["POST"])
+@login_required
+def sensors_manual_reading(did):
+    """The farmer types in a reading (e.g. from a cheap hand-held probe, or to try the feature without hardware)."""
+    uid = session["user_id"]
+    conn = get_db()
+    d = _own_device(conn, uid, did)
+    moist = to_float(request.form.get("moisture"), 0, 100)
+    temp_raw = (request.form.get("temp") or "").strip()
+    temp = to_float(temp_raw, -20, 70) if temp_raw else None
+    if not d or moist is None or (temp_raw and temp is None):
+        conn.close(); flash("Enter moisture between 0 and 100 (temperature between -20 and 70, optional).", "error")
+        return redirect(url_for("sensors_page"))
+    conn.execute("INSERT INTO sensor_readings (device_id, farm_id, user_id, moisture, temp, source, created_at) VALUES (?,?,?,?,?,?,?)",
+                 (did, d["farm_id"], uid, moist, temp, "manual", _utcnow_str()))
+    conn.execute("UPDATE sensor_devices SET last_seen=? WHERE id=?", (_utcnow_str(), did))
+    conn.commit(); conn.close()
+    flash("Reading saved.", "success")
+    return redirect(url_for("sensors_page"))
+
+@app.route("/api/sensor/ingest", methods=["POST"])
+def api_sensor_ingest():
+    """For the sensor itself:  POST  {"moisture": 41.5, "temp": 28.2}  with  Authorization: Bearer gfs_...
+    Token-authenticated, so it needs no login or cookie; wrong tokens are throttled per IP, readings per device."""
+    ip = client_ip()
+    if throttle_blocked("sensfail:" + ip, 30, 600):
+        return jsonify({"error": "too many failed attempts"}), 429
+    if (request.content_length or 0) > 2048:
+        return jsonify({"error": "payload too large"}), 413
+    auth = request.headers.get("Authorization", "")
+    tok = auth[7:].strip() if auth[:7].lower() == "bearer " else request.headers.get("X-Device-Token", "").strip()
+    conn = get_db()
+    dev = None
+    if tok.startswith("gfs_") and len(tok) <= 100:
+        dev = conn.execute("SELECT id, user_id, farm_id FROM sensor_devices WHERE token_hash=?", (hash_token(tok),)).fetchone()
+    if not dev:
+        conn.close(); throttle_hit("sensfail:" + ip)
+        return jsonify({"error": "invalid token"}), 401
+    key = f"sens:{dev['id']}"
+    if throttle_blocked(key, 120, 3600):
+        conn.close(); return jsonify({"error": "too many readings (limit 120 per hour)"}), 429
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    moist = to_float(data.get("moisture"), 0, 100)
+    temp = to_float(data.get("temp"), -20, 70) if data.get("temp") is not None else None
+    if moist is None or (data.get("temp") is not None and temp is None):
+        conn.close(); return jsonify({"error": "moisture must be 0-100 (and temp -20..70 if sent)"}), 400
+    throttle_hit(key)
+    now = _utcnow_str()
+    conn.execute("INSERT INTO sensor_readings (device_id, farm_id, user_id, moisture, temp, source, created_at) VALUES (?,?,?,?,?,?,?)",
+                 (dev["id"], dev["farm_id"], dev["user_id"], moist, temp, "device", now))
+    conn.execute("UPDATE sensor_devices SET last_seen=? WHERE id=?", (now, dev["id"]))
+    conn.execute("DELETE FROM sensor_readings WHERE device_id=? AND created_at<?",
+                 (dev["id"], (datetime.now(timezone.utc) - timedelta(days=SENSOR_KEEP_DAYS)).strftime("%Y-%m-%d %H:%M:%S")))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True}), 201
+
+
+# ══════════════════════════════════════════════════════════════════
+#  YIELD + PROFIT/LOSS FORECAST  (transparent arithmetic - see forecast.py)
+# ══════════════════════════════════════════════════════════════════
+def _price_for(conn, uid, ck, override):
+    """(price per kg, source tag, note) - the farmer's own number first, then their last recorded price, then a haircut reference."""
+    if override and override > 0:
+        return override, "yours", ""
+    word = fc.PRICE_MATCH.get(ck)
+    if word:
+        rows = conn.execute("SELECT crop, price, day FROM price_history WHERE user_id=? AND source='manual' ORDER BY day DESC, id DESC",
+                            (uid,)).fetchall()
+        for r in rows:
+            if word in (r["crop"] or "").lower():
+                return float(r["price"]), "recorded", r["day"]
+    ref = fc.reference_price(ck, _MARKET_FALLBACK)
+    if ref:
+        return round(ref * fc.FARMGATE_FACTOR, 1), "reference", f"{int(fc.FARMGATE_FACTOR * 100)}% of ৳{ref:g}"
+    return None, "", ""
+
+def forecast_rows(uid):
+    conn = get_db()
+    farms = [dict(r) for r in conn.execute("SELECT id, farm_name, crop_type, area, planting_date, status FROM farms WHERE user_id=? ORDER BY farm_name", (uid,)).fetchall()]
+    inputs = {r["farm_id"]: dict(r) for r in conn.execute("SELECT * FROM forecast_inputs WHERE user_id=?", (uid,)).fetchall()}
+    rows = []
+    for f in farms:
+        ck = farm_tasks.crop_key(f["crop_type"])
+        t = {r["type"]: float(r["s"] or 0) for r in conn.execute(
+            "SELECT type, SUM(amount) AS s FROM expense_log WHERE farm_id=? AND user_id=? GROUP BY type", (f["id"], uid)).fetchall()}
+        inp = inputs.get(f["id"], {})
+        price, psrc, pnote = _price_for(conn, uid, ck, inp.get("price_per_kg"))
+        try:
+            area = float(f["area"] or 0)
+        except (TypeError, ValueError):
+            area = 0.0
+        res = fc.forecast_farm(ck, area, price, t.get("expense", 0.0), t.get("income", 0.0),
+                               inp.get("yield_per_acre"), inp.get("remaining_cost"))
+        g = conn.execute("SELECT harvest_date FROM crop_growth WHERE farm_id=? AND user_id=? ORDER BY id DESC LIMIT 1", (f["id"], uid)).fetchone()
+        harvest = (g["harvest_date"] if g and g["harvest_date"] else "")
+        if not harvest and f.get("planting_date") and ck in farm_tasks.EXPECTED_DAYS:
+            pd_ = farm_tasks._d(f["planting_date"])
+            if pd_:
+                harvest = (pd_ + timedelta(days=farm_tasks.EXPECTED_DAYS[ck])).isoformat()
+        rows.append({"farm": f, "ck": ck, "fc": res, "price_src": psrc, "price_note": pnote, "inp": inp,
+                     "income_so_far": t.get("income", 0.0), "harvest": harvest})
+    conn.close()
+    return rows
+
+@app.route("/forecast")
+@login_required
+def forecast_page():
+    rows = forecast_rows(session["user_id"])
+    ok = [r["fc"] for r in rows if r["fc"]["ok"]]
+    tot = None
+    if ok:
+        tot = {"partial": any(not x["costs_known"] for x in ok),
+               "profit": [sum(x["profit"][i] for x in ok) for i in range(3)],
+               "income": [sum(x["income_total"][i] for x in ok) for i in range(3)],
+               "cost": sum(x["cost"] for x in ok), "n": len(ok)}
+    return render_template("forecast.html", rows=rows, tot=tot, factor=int(fc.FARMGATE_FACTOR * 100),
+                           spread=int(fc.SPREAD * 100), maund=int(fc.MAUND_KG))
+
+@app.route("/forecast/save", methods=["POST"])
+@login_required
+def forecast_save():
+    uid = session["user_id"]
+    conn = get_db()
+    fid = owned_farm_id(conn, uid, request.form.get("farm_id"))
+    if fid is None:
+        conn.close(); flash("Farm not found.", "error"); return redirect(url_for("forecast_page"))
+    def num(name, hi):
+        raw = (request.form.get(name) or "").strip()
+        return (to_float(raw, 0, hi), bool(raw))
+    y, y_given = num("yield_per_acre", 100000)
+    p, p_given = num("price_per_kg", 100000)
+    c, c_given = num("remaining_cost", 1e9)
+    if (y_given and y is None) or (p_given and p is None) or (c_given and c is None):
+        conn.close(); flash("Please enter valid positive numbers.", "error"); return redirect(url_for("forecast_page"))
+    # empty field = "use the default"; store NULL
+    conn.execute("DELETE FROM forecast_inputs WHERE user_id=? AND farm_id=?", (uid, fid))
+    if y or p or c_given:          # "0" is a real answer for costs still to come ("nothing left to spend")
+        conn.execute("INSERT INTO forecast_inputs (user_id, farm_id, yield_per_acre, price_per_kg, remaining_cost, updated_at) VALUES (?,?,?,?,?,?)",
+                     (uid, fid, y or None, p or None, c if c_given else None, _utcnow_str()))
+    conn.commit(); conn.close()
+    flash("Forecast inputs saved.", "success")
+    return redirect(url_for("forecast_page") + f"#farm{fid}")
 
 
 # ── Entry ─────────────────────────────────────────────────────────

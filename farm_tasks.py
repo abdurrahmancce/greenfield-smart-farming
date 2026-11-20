@@ -8,6 +8,11 @@ import time
 import re
 from datetime import datetime, date
 
+SOIL_DRY_BELOW = 30     # % moisture - generic limits; sensors differ, so the farmer should calibrate against the field
+SOIL_WET_ABOVE = 85
+SOIL_FRESH_HOURS = 12   # an older reading is not used for advice
+SOIL_OK_ABOVE = 60      # a fresh reading at or above this makes the "irrigate on schedule" nudge unnecessary
+
 # ── crop knowledge (general Bangladesh guidance) ───────────────────────────────────────────────
 IRRIGATION_DAYS = {"rice": 3, "wheat": 12, "potato": 9, "tomato": 6, "maize": 10, "mustard": 15, "jute": 10,
                    "onion": 8, "garlic": 8, "brinjal": 6, "chilli": 6, "lentil": 20, "ginger": 7}
@@ -63,14 +68,22 @@ _TXT = {
  "followup":     ("Follow up on last diagnosis", "আগের রোগ নির্ণয়ের ফলোআপ",
                   "{dx} was found {days} day(s) ago. Re-check the plants and see whether treatment is working.",
                   "{days} দিন আগে {dx} ধরা পড়েছিল। গাছগুলো আবার দেখুন এবং চিকিৎসা কাজ করছে কিনা যাচাই করুন।"),
+ "soil_dry":     ("Soil is dry — irrigate", "মাটি শুকনো — সেচ দিন",
+                  "Your soil sensor read {moist}% moisture {ago}. That is below {limit}%, so the crop is likely short of water. "
+                  "Irrigate in the early morning or evening.",
+                  "আপনার সয়েল সেন্সর {ago} {moist}% আর্দ্রতা দেখিয়েছে, যা {limit}%-এর নিচে — ফসল সম্ভবত পানির অভাবে আছে। ভোরে বা সন্ধ্যায় সেচ দিন।"),
+ "soil_wet":     ("Soil is waterlogged — improve drainage", "মাটিতে অতিরিক্ত পানি — নিকাশি ঠিক করুন",
+                  "Your soil sensor read {moist}% moisture {ago}. Skip irrigation and check that drains are open "
+                  "(except for flooded rice).",
+                  "আপনার সয়েল সেন্সর {ago} {moist}% আর্দ্রতা দেখিয়েছে। সেচ বন্ধ রাখুন এবং নালা খোলা আছে কিনা দেখুন (জলমগ্ন ধান ছাড়া)।"),
 }
-_LINKS = {"crop_mismatch": "/farms", "irrigate": "/irrigation", "irrigate_never": "/irrigation", "topdress": "/fertilizer", "fungal": "/disease",
+_LINKS = {"soil_dry": "/sensors", "soil_wet": "/sensors", "crop_mismatch": "/farms", "irrigate": "/irrigation", "irrigate_never": "/irrigation", "topdress": "/fertilizer", "fungal": "/disease",
           "followup": "/disease", "harvest_soon": "/growth", "harvest_now": "/growth", "rice_water": "/irrigation",
           "skip_irrigation": "/irrigation"}
 _ICON = {"crop_mismatch": "❓", "rain_alert": "⛈️", "heat_alert": "🌡️", "irrigate": "💧", "irrigate_never": "💧", "skip_irrigation": "🌧️",
-         "rice_water": "🌾", "topdress": "🧪", "fungal": "🍄", "harvest_soon": "🧺", "harvest_now": "🌾", "followup": "🔎"}
+         "rice_water": "🌾", "topdress": "🧪", "fungal": "🍄", "harvest_soon": "🧺", "harvest_now": "🌾", "followup": "🔎", "soil_dry": "🏜️", "soil_wet": "🌊"}
 _PRI = {"rain_alert": 0, "heat_alert": 0, "irrigate": 0, "fungal": 0, "harvest_now": 0, "topdress": 1, "harvest_soon": 1,
-        "followup": 1, "crop_mismatch": 2, "irrigate_never": 2, "skip_irrigation": 2, "rice_water": 2}
+        "followup": 1, "crop_mismatch": 2, "irrigate_never": 2, "skip_irrigation": 2, "rice_water": 2, "soil_dry": 0, "soil_wet": 1}
 
 
 def crop_key(name):
@@ -144,10 +157,10 @@ def name_crop_mismatch(farm):
     return ""
 
 
-def build_tasks(farm, growth=None, last_irrigation=None, scan=None, wx=None, today=None, lang="en"):
+def build_tasks(farm, growth=None, last_irrigation=None, scan=None, wx=None, today=None, lang="en", soil=None):
     """farm: dict(id,farm_name,crop_type,planting_date); growth: dict(expected_days,growth_stage) or None;
     last_irrigation: 'YYYY-MM-DD' or None; scan: dict(diagnosis,health_status,severity,created_at) or None;
-    wx: summarize_forecast() dict or None. Returns a list of task dicts (unsorted)."""
+    wx: summarize_forecast() dict or None; soil: dict(moisture=%, age_hours=float) from a sensor, or None. Returns a list of task dicts (unsorted)."""
     bn = lang == "bn"
     today = today or date.today()
     out = []
@@ -171,9 +184,23 @@ def build_tasks(farm, growth=None, last_irrigation=None, scan=None, wx=None, tod
         add("rain_alert", rain=rain, wind=wx["wind_kmh"])
     if wx and wx["temp_max"] >= 36:
         add("heat_alert", temp=wx["temp_max"])
+    # soil sensor (only a fresh reading is trusted)
+    soil_ok = False
+    if soil and soil.get("moisture") is not None and soil.get("age_hours", 99) <= SOIL_FRESH_HOURS:
+        m, age = soil["moisture"], soil["age_hours"]
+        ago = ("%d ঘণ্টা আগে" % round(age) if bn else "%d h ago" % round(age)) if age >= 1 else ("এইমাত্র" if bn else "just now")
+        mtxt = ("%.0f" % m)
+        if m < SOIL_DRY_BELOW:
+            if rain < 5:                       # rain is coming: the normal "hold off irrigating" advice applies instead
+                add("soil_dry", moist=mtxt, ago=ago, limit=SOIL_DRY_BELOW)
+                soil_ok = True                 # the sensor already says "irrigate" - no second, schedule-based nudge
+        else:
+            if m > SOIL_WET_ABOVE and ck != "rice":
+                add("soil_wet", moist=mtxt, ago=ago)
+            soil_ok = m >= SOIL_OK_ABOVE
     # irrigation
     every = IRRIGATION_DAYS.get(ck, 7)
-    if ck:
+    if ck and not soil_ok:
         li = _d(last_irrigation)
         if wx and rain >= 5:
             add("skip_irrigation", rain=rain)

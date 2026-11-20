@@ -22,7 +22,7 @@ def test_every_inline_script_carries_the_request_nonce(client):
         nonce = re.search(r"'nonce-([^']+)'", r.headers["Content-Security-Policy"]).group(1)
         html = r.get_data(as_text=True)
         for tag in re.findall(r"<script\b[^>]*>", html):
-            if "src=" in tag:
+            if "src=" in tag or "application/json" in tag:   # data blocks are never executed
                 continue
             assert f'nonce="{nonce}"' in tag, tag
 
@@ -42,7 +42,7 @@ def test_templates_have_no_inline_handlers_or_cdn_scripts():
             assert not src.startswith("http"), (p.name, src)
         assert "cdnjs.cloudflare.com" not in s and "unpkg.com" not in s, p.name
         for tag in re.findall(r"<script\b[^>]*>", s):
-            if "src=" not in tag:
+            if "src=" not in tag and "application/json" not in tag:
                 assert "csp_nonce" in tag, (p.name, tag)
 
 

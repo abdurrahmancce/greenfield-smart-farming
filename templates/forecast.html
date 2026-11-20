@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Yield & Profit Forecast','ফলন ও লাভ-ক্ষতির পূর্বাভাস') }}{% endblock %}
+{% block page_title %}🔮 {{ tr('Yield & Profit Forecast','ফলন ও লাভ-ক্ষতির পূর্বাভাস') }}{% endblock %}
+{% block page_sub %}{{ tr('A simple estimate from your farm size, expenses and price — not a promise','খামারের আয়তন, খরচ ও দাম থেকে সহজ আনুমানিক হিসাব — নিশ্চয়তা নয়') }}{% endblock %}
+
+{% block head %}
+<style>
+.fc-note{font-size:12.5px;color:var(--muted);line-height:1.55}
+.fc-warn{background:#FFF8E1;border:1px solid #FFE082;color:#6D4C00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.55;margin-bottom:16px}
+.fc-tot{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:700px){.fc-tot{grid-template-columns:1fr}}
+.fc-box{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+.fc-box .v{font-size:19px;font-weight:800}.fc-box .l{font-size:11.5px;color:var(--muted);margin-top:3px}
+.fc-pos{color:#2E7D32}.fc-neg{color:#C62828}
+.fc-table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+.fc-table th,.fc-table td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:right}
+.fc-table th:first-child,.fc-table td:first-child{text-align:left}
+.fc-table th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.fc-wrap{overflow-x:auto}
+.fc-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)}
+.fc-form .form-control{width:150px}
+.fc-card{margin-bottom:16px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fc-warn">
+  <b>{{ tr('Please read:','অনুগ্রহ করে পড়ুন:') }}</b>
+  {{ tr('This is arithmetic, not artificial intelligence: area × yield per acre × price − costs. Weather, disease and market swings are not modelled, so the real result can be far from the range shown.',
+        'এটি কৃত্রিম বুদ্ধিমত্তা নয়, সাধারণ হিসাব: আয়তন × একর-প্রতি ফলন × দাম − খরচ। আবহাওয়া, রোগ ও বাজারের ওঠানামা হিসাবে নেই, তাই আসল ফল দেখানো সীমা থেকে অনেক আলাদা হতে পারে।') }}
+  {{ tr('The built-in yield ranges are rough typical figures for Bangladesh and have not been checked against official statistics — enter your own yield for each farm for a better estimate.',
+        'ভেতরের ফলনের সীমা বাংলাদেশের মোটামুটি সাধারণ সংখ্যা, সরকারি পরিসংখ্যানের সঙ্গে মেলানো হয়নি — ভালো হিসাবের জন্য প্রতিটি খামারে নিজের ফলনের সংখ্যা দিন।') }}
+</div>
+
+{% if tot %}
+<div class="fc-tot">
+  <div class="fc-box"><div class="v {{ 'fc-neg' if tot.profit[0] < 0 else 'fc-pos' }}">{{ tot.profit[0]|money }}</div><div class="l">{{ tr('Low case profit','কম ফলনে লাভ/ক্ষতি') }} ({{ tot.n }} {{ tr('farms','খামার') }})</div></div>
+  <div class="fc-box"><div class="v {{ 'fc-neg' if tot.profit[1] < 0 else 'fc-pos' }}">{{ tot.profit[1]|money }}</div><div class="l">{{ tr('Typical case profit','সাধারণ ফলনে লাভ/ক্ষতি') }}</div></div>
+  <div class="fc-box"><div class="v {{ 'fc-neg' if tot.profit[2] < 0 else 'fc-pos' }}">{{ tot.profit[2]|money }}</div><div class="l">{{ tr('High case profit','ভালো ফলনে লাভ/ক্ষতি') }}</div></div>
+</div>
+{% endif %}
+
+{% if tot and tot.partial %}<p class="fc-note" style="margin:-8px 0 14px">⚠️ {{ tr('Some farms have no “costs still to come” yet — those profits are upper bounds.','কিছু খামারে “বাকি খরচ” দেওয়া নেই — সেগুলোর লাভ সর্বোচ্চ সীমা।') }}</p>{% endif %}
+{% if not rows %}
+<div class="card"><div class="card-body fc-note" style="text-align:center;padding:36px">{{ tr('Add a farm first (Farm Management) to see a forecast.','পূর্বাভাস দেখতে আগে একটি খামার যোগ করুন।') }}</div></div>
+{% endif %}
+
+{% for r in rows %}
+{% set f = r.farm %}{% set x = r.fc %}
+<div class="card fc-card" id="farm{{ f.id }}">
+  <div class="card-header"><h3 class="card-title"><i class="fas fa-seedling"></i> {{ f.farm_name }} <span class="fc-note">· {{ f.crop_type }} · {{ f.area }} {{ tr('acres','একর') }}{% if r.harvest %} · {{ tr('expected harvest','প্রত্যাশিত ফসল তোলা') }} {{ r.harvest }}{% endif %}</span></h3></div>
+  <div class="card-body">
+    {% if x.ok %}
+      <div class="fc-wrap"><table class="fc-table">
+        <tr><th></th><th>{{ tr('Low','কম') }}</th><th>{{ tr('Typical','সাধারণ') }}</th><th>{{ tr('High','ভালো') }}</th></tr>
+        <tr><td>{{ tr('Yield per acre (kg)','একর-প্রতি ফলন (কেজি)') }}</td>{% for v in x.yield_per_acre %}<td>{{ '{:,.0f}'.format(v) }}</td>{% endfor %}</tr>
+        <tr><td>{{ tr('Total yield (kg)','মোট ফলন (কেজি)') }}</td>{% for v in x.kg %}<td>{{ '{:,.0f}'.format(v) }}</td>{% endfor %}</tr>
+        <tr><td>{{ tr('Total yield (maund)','মোট ফলন (মণ)') }}</td>{% for v in x.maund %}<td>{{ '{:,.1f}'.format(v) }}</td>{% endfor %}</tr>
+        <tr><td>{{ tr('Expected income','প্রত্যাশিত আয়') }}</td>{% for v in x.income_total %}<td>{{ v|money }}</td>{% endfor %}</tr>
+        <tr><td>{{ tr('Costs (so far + still to come)','খরচ (এ পর্যন্ত + বাকি)') }}</td>{% for i in range(3) %}<td>{{ x.cost|money }}</td>{% endfor %}</tr>
+        <tr><td><b>{{ tr('Profit / loss','লাভ / ক্ষতি') }}</b></td>{% for v in x.profit %}<td class="{{ 'fc-neg' if v < 0 else 'fc-pos' }}"><b>{{ v|money }}</b></td>{% endfor %}</tr>
+        <tr><td>{{ tr('Profit per acre','একর-প্রতি লাভ/ক্ষতি') }}</td>{% for v in x.profit_per_acre %}<td class="{{ 'fc-neg' if v < 0 else 'fc-pos' }}">{{ v|money }}</td>{% endfor %}</tr>
+      </table></div>
+      <p class="fc-note">
+        {% if x.verdict == 'partial' %}⚠️ {{ tr('This ignores the costs still to come (seed, labour, fertiliser, irrigation, harvest, transport), so the real profit will be LOWER than shown. Enter them below — write 0 if nothing is left to spend.',
+                                       'এতে বাকি খরচ (বীজ, শ্রমিক, সার, সেচ, ফসল তোলা, পরিবহন) ধরা হয়নি, তাই আসল লাভ দেখানোর চেয়ে কম হবে। নিচে বাকি খরচ লিখুন — আর কিছু খরচ না থাকলে ০ লিখুন।') }}
+        {% elif x.verdict == 'profit' %}✅ {{ tr('Even the low case is in profit.','কম ফলনেও লাভ থাকার কথা।') }}
+        {% elif x.verdict == 'loss' %}⚠️ {{ tr('Even the high case is a loss at these numbers — check price and costs.','এই সংখ্যায় ভালো ফলনেও ক্ষতি — দাম ও খরচ যাচাই করুন।') }}
+        {% else %}↕️ {{ tr('The result depends on the yield: low yield loses money, a good one earns.','ফলনের ওপর নির্ভর করছে: কম ফলনে ক্ষতি, ভালো ফলনে লাভ।') }}{% endif %}
+        {{ tr('Break-even: about','ক্ষতি এড়াতে লাগবে প্রায়') }} <b>{{ '{:,.0f}'.format(x.break_even_yield) }} {{ tr('kg/acre at','কেজি/একর, দামে') }} ৳{{ '%g'|format(x.price) }}/kg</b>
+        {{ tr('or a price of','অথবা দাম') }} <b>৳{{ '%g'|format(x.break_even_price) }}/kg</b> {{ tr('at the typical yield.','সাধারণ ফলনে।') }}
+      </p>
+      <p class="fc-note">
+        {{ tr('Yield:','ফলন:') }} {% if x.yield_source == 'yours' %}{{ tr('your number','আপনার দেওয়া সংখ্যা') }} (±{{ spread }}%){% else %}{{ tr('rough typical range for this crop','এই ফসলের মোটামুটি সাধারণ সীমা') }}{% endif %} ·
+        {{ tr('Price:','দাম:') }} ৳{{ '%g'|format(x.price) }}/kg
+        {% if r.price_src == 'yours' %}({{ tr('your number','আপনার দেওয়া') }}){% elif r.price_src == 'recorded' %}({{ tr('last price you recorded on','আপনার শেষ রেকর্ড করা দাম,') }} {{ r.price_note }}){% else %}({{ r.price_note }} {{ tr('sample wholesale price','নমুনা পাইকারি দাম') }}){% endif %}
+        {% if not x.costs_known %} · {{ tr('Costs still to come are not included yet.','বাকি খরচ এখনো ধরা হয়নি।') }}{% endif %}
+        {% if r.income_so_far %} · {{ tr('Income already recorded:','এ পর্যন্ত আয় লেখা আছে:') }} {{ r.income_so_far|money }} ({{ tr('not counted twice','দুবার গোনা হয়নি') }}){% endif %}
+      </p>
+    {% else %}
+      <p class="fc-note">
+        {% if x.reason == 'no_area' %}{{ tr('This farm has no area set — edit the farm and add its size in acres.','এই খামারের আয়তন দেওয়া নেই — খামার এডিট করে একর লিখুন।') }}
+        {% elif x.reason == 'no_reference' %}{{ tr('There is no built-in yield for','কোনো বিল্ট-ইন ফলনের তথ্য নেই:') }} “{{ f.crop_type }}” — {{ tr('enter your own yield per acre below.','নিচে নিজের একর-প্রতি ফলন দিন।') }}
+        {% else %}{{ tr('No price is available — enter the price per kg you expect below.','কোনো দাম পাওয়া যায়নি — নিচে প্রত্যাশিত কেজি-প্রতি দাম দিন।') }}{% endif %}
+      </p>
+    {% endif %}
+    <form class="fc-form" method="POST" action="{{ url_for('forecast_save') }}">
+      <input type="hidden" name="farm_id" value="{{ f.id }}"/>
+      <div><label class="form-label">{{ tr('My yield (kg/acre)','আমার ফলন (কেজি/একর)') }}</label><input type="number" name="yield_per_acre" class="form-control" min="0" step="1" value="{{ '%g'|format(r.inp.yield_per_acre) if r.inp.yield_per_acre else '' }}" placeholder="{{ tr('use default','ডিফল্ট') }}"/></div>
+      <div><label class="form-label">{{ tr('Expected price (৳/kg)','প্রত্যাশিত দাম (৳/কেজি)') }}</label><input type="number" name="price_per_kg" class="form-control" min="0" step="0.1" value="{{ '%g'|format(r.inp.price_per_kg) if r.inp.price_per_kg else '' }}" placeholder="{{ tr('use default','ডিফল্ট') }}"/></div>
+      <div><label class="form-label">{{ tr('Costs still to come (৳)','বাকি খরচ (৳)') }}</label><input type="number" name="remaining_cost" class="form-control" min="0" step="1" value="{{ '%g'|format(r.inp.remaining_cost) if r.inp.get('remaining_cost') is not none else '' }}" placeholder="{{ tr('enter, 0 if none','লিখুন, না থাকলে ০') }}"/></div>
+      <button class="btn btn-secondary btn-sm" type="submit"><i class="fas fa-save"></i> {{ tr('Update forecast','হিসাব হালনাগাদ') }}</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+<p class="fc-note">{{ tr('1 maund = ','১ মণ = ') }}{{ maund }} kg. {{ tr('Leave a box empty to go back to the default.','ডিফল্টে ফিরতে ঘরটি খালি রাখুন।') }}</p>
+{% endblock %}
