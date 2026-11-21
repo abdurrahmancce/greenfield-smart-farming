@@ -22,6 +22,10 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 | --- | --- |
 | ![Report](docs/screenshots/report.png) | ![Disease detector](docs/screenshots/disease.png) |
 
+| Soil sensor (simulated device data) | Sensor reading becomes a task |
+| --- | --- |
+| ![Soil sensors](docs/screenshots/soil-sensors.png) | ![Today's tasks](docs/screenshots/dashboard-tasks.png) |
+
 ## 🚀 Features
 
 * **Today's Tasks** — rule-based, crop-aware to-do list (irrigation, top-dressing, harvest window, fungal risk, rain/heat) from general Bangladesh crop guidance plus the OpenWeather forecast. Says so when the forecast is unavailable instead of guessing.
