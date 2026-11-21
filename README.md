@@ -116,6 +116,8 @@ Optional environment variables (use a `.env` file, never commit it):
 | `ADMIN_EMAILS` | Comma-separated admin e-mails |
 | `BREVO_API_KEY` + `MAIL_FROM` | Password-reset e-mail over HTTPS (works on Render's free plan, which blocks SMTP) |
 | `MAIL_SERVER` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` | Optional SMTP fallback for hosts that allow it |
+
+> **E-mail note:** reset mail is sent through Brevo's HTTPS API with a verified sender. A free-mail sender (e.g. Gmail) works for a demo but may land in spam; for production, use your own domain with DKIM/DMARC set up.
 | `APP_BASE_URL` | Public URL for links in e-mail/push |
 
 ## 🌐 Deployment
