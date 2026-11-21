@@ -129,6 +129,13 @@
     </a>
     {% endif %}
 
+    <!-- One-click demo: its own temporary account with sample data -->
+    <form method="post" action="{{ url_for('start_demo') }}" style="margin-bottom:12px">
+      <button type="submit" class="google-btn" style="width:100%;cursor:pointer;font:inherit;background:#F1F8E9;border:1px solid #A5D6A7;color:#1B5E20;font-weight:700">
+        <i class="fas fa-flask" style="margin-right:10px"></i> Try the demo — no sign-up
+      </button>
+    </form>
+
     <!-- First time hint -->
     <div class="demo-box">
       <strong><i class="fas fa-info-circle"></i> First time here?</strong>

@@ -109,6 +109,11 @@
         <a href="{{ url_for('login') }}" class="btn-hs">
           <i class="fas fa-sign-in-alt"></i> Sign In
         </a>
+        <form method="post" action="{{ url_for('start_demo') }}" style="display:inline">
+          <button type="submit" class="btn-hs" style="cursor:pointer;font:inherit">
+            <i class="fas fa-flask"></i> Try demo
+          </button>
+        </form>
       {% endif %}
     </div>
     <div class="hero-stats">

@@ -83,3 +83,14 @@ def test_recorded_market_price_beats_reference(client):
     assert (price, src, note) == (55.0, "recorded", "2026-11-10")
     cn = A.get_db(); p2, s2, _ = A._price_for(cn, uid, "wheat", 70.0); cn.close()
     assert (p2, s2) == (70.0, "yours")
+
+
+def test_irrigate_task_does_not_claim_no_rain_without_weather_data():
+    import datetime as dt, farm_tasks as ft
+    farm = {"id": 1, "farm_name": "A", "crop_type": "Rice", "planting_date": "2026-09-01"}
+    today = dt.date(2026, 11, 22)
+    no_wx = [t for t in ft.build_tasks(farm, last_irrigation="2026-11-01", wx=None, today=today) if t["kind"] == "irrigate"]
+    assert no_wx and "no rain is expected" not in no_wx[0]["detail"] and "no weather data" in no_wx[0]["detail"]
+    wx = {"rain_mm": 0, "pop": 0, "temp_max": 30, "temp_min": 24, "wind_kmh": 10, "humidity": 60}
+    with_wx = [t for t in ft.build_tasks(farm, last_irrigation="2026-11-01", wx=wx, today=today) if t["kind"] == "irrigate"]
+    assert with_wx and "no rain is expected" in with_wx[0]["detail"]

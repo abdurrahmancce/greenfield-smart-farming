@@ -3,10 +3,15 @@
 A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware daily tasks, weather, money tracking, AI leaf-disease hints, push alerts and reports — usable on any phone, even with weak signal.
 
 **Live demo:** https://greenfield-smart-farming-1.onrender.com *(free hosting — first load can take 30–50 s)*
+**No sign-up needed:** open the live site and press **“Try the demo”** on the login page. You get your own private demo account with sample farms, costs, a dry-soil sensor and a forecast (deleted after 24 h).
+
+![Demo walkthrough](docs/demo.gif)
+
+*The GIF was recorded from a local run of this same code with sample data (weather was offline while recording, so that notice is visible). Screenshots below also use demo data.*
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-81%20passing-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-88%20passing-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
 
 > Screenshots use demo data, not a real farmer's records.
 
@@ -64,7 +69,7 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
 
 ## 🧪 Testing & automation
 
-* **81 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin, CSP, soil sensors, forecast) run on every push via GitHub Actions.
+* **88 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin, CSP, soil sensors, forecast, demo accounts) run on every push via GitHub Actions.
 * **Nightly encrypted PostgreSQL backup** (artifact kept 14 days, fails loudly), **keep-alive** and **weather-alert** workflows.
 * Run locally: `python -m pytest -q`
 

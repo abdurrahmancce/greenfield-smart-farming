@@ -10,6 +10,7 @@ Last full review: 2026-11-17 (code audit + attack tests + dependency scan). Regr
 - Uploads: file type is checked from the real bytes, max 2 MB.
 - Push alerts: only real browser push services are accepted as destinations; max 5 devices per user.
 - Soil-sensor API (`/api/sensor/ingest`): the only endpoint without a login. Each sensor has a random secret token (shown once, only its SHA-256 hash is stored, never exported); wrong tokens are throttled per IP, readings per device (120/hour), payload max 2 KB, values range-checked, data older than 30 days is deleted. Deleting a sensor revokes its token at once.
+- Demo accounts (`POST /demo`): each click makes its own temporary account with sample data (random password nobody knows, e-mail `…@demo.invalid`), so visitors never share data. Limited to 6 per network per hour and 150 in total; deleted with all their data after 24 h; they cannot change e-mail/password, delete the account, or use the paid AI photo scan and push alerts; they are not counted in the admin numbers.
 - Headers: strict CSP - scripts only from this site (`'self'`) or with a per-request nonce; no inline event handlers, no `eval`, no third-party scripts (Chart.js, Leaflet and Font Awesome are served from `static/vendor/`). Plus `frame-ancestors`, `base-uri`, `object-src`, `form-action`, nosniff, Referrer-Policy, HSTS on HTTPS.
 
 ## Known limits (accepted / future work)

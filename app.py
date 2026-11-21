@@ -1052,6 +1052,98 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ── Try-demo accounts ───────────────────────────────────────────────
+# Every click makes its OWN short-lived account filled with sample data, so visitors can look around without
+# registering, nobody shares a password, and nobody sees anyone else's edits. Demo accounts are deleted after
+# DEMO_TTL_HOURS, cannot change e-mail/password, and cannot use the paid AI photo scan or push alerts.
+DEMO_TTL_HOURS = 24
+DEMO_MAX_USERS = 150          # hard cap so the demo can never fill the free database
+DEMO_PER_IP    = 6            # new demo accounts per network per hour
+
+def is_demo():
+    return bool(session.get("demo"))
+
+def demo_block_json():
+    return jsonify({"error": "This feature is switched off in the demo account. Register a free account to use it."}), 403
+
+def purge_old_demos(conn):
+    cutoff = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=DEMO_TTL_HOURS)).strftime("%Y-%m-%d %H:%M:%S")
+    for r in conn.execute("SELECT id FROM users WHERE role='demo' AND created_at<?", (cutoff,)).fetchall():
+        delete_user_data(conn, r["id"])
+
+def seed_demo_data(conn, uid):
+    """Sample farms, costs, logs and a dry-soil sensor so every page has something real-looking to show."""
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    def d(days_ago): return (today - timedelta(days=days_ago)).isoformat()
+    farms = [("Hurricane Plot", "Rice",   "Chittagong", 8.0, 70, "Active"),
+             ("Cactus Field",   "Tomato", "Sylhet",     5.5, 35, "Planted"),
+             ("North Block",    "Wheat",  "Barishal",   4.0, 50, "Planted")]
+    ids = []
+    for name, crop, loc, area, age, status in farms:
+        conn.execute("INSERT INTO farms (user_id,farm_name,crop_type,location,area,planting_date,status) VALUES (?,?,?,?,?,?,?)",
+                     (uid, name, crop, loc, area, d(age), status))
+        ids.append(conn.execute("SELECT id FROM farms WHERE user_id=? AND farm_name=?", (uid, name)).fetchone()["id"])
+    rice, tomato, wheat = ids
+    for fid, typ, cat, amt, desc, ago in [
+            (rice, "expense", "Seeds", 6500, "Seed paddy", 68), (rice, "expense", "Fertilizer", 14200, "Urea + TSP", 40),
+            (rice, "expense", "Labour", 18000, "Transplanting crew", 62),
+            (tomato, "expense", "Seeds", 4200, "Seedlings", 33), (tomato, "expense", "Pesticide", 3100, "Fungicide spray", 12),
+            (wheat, "expense", "Fertilizer", 7600, "Basal dose", 45), (wheat, "income", "Sale", 5000, "Early green sale", 3)]:
+        conn.execute("INSERT INTO expense_log (farm_id,user_id,type,category,amount,description,date) VALUES (?,?,?,?,?,?,?)",
+                     (fid, uid, typ, cat, amt, desc, d(ago)))
+    for fid, ago, liters, method, mins in [(rice, 9, 9000, "Flood", 120), (rice, 14, 8500, "Flood", 110),
+                                           (tomato, 4, 1800, "Drip", 45), (tomato, 8, 1700, "Drip", 45)]:
+        conn.execute("INSERT INTO irrigation_log (farm_id,user_id,date,water_liters,method,duration_min,notes) VALUES (?,?,?,?,?,?,?)",
+                     (fid, uid, d(ago), liters, method, mins, "Demo entry"))
+    for fid, ago, days, stage in [(rice, 70, 120, "Vegetative"), (tomato, 35, 90, "Flowering"), (wheat, 50, 110, "Vegetative")]:
+        conn.execute("INSERT INTO crop_growth (farm_id,user_id,planting_date,expected_days,harvest_date,growth_stage,notes) VALUES (?,?,?,?,?,?,?)",
+                     (fid, uid, d(ago), days, (today + timedelta(days=days - ago)).isoformat(), stage, "Demo entry"))
+    conn.execute("INSERT INTO crop_notes (farm_id,user_id,title,note,category) VALUES (?,?,?,?,?)",
+                 (rice, uid, "Water level", "Field was drying at the edges; top up this week.", "Irrigation"))
+    # a soil sensor whose last reading is dry -> shows the "Soil is dry" task and the chart
+    conn.execute("INSERT INTO sensor_devices (user_id,farm_id,name,token_hash,token_hint,created_at,last_seen) VALUES (?,?,?,?,?,?,?)",
+                 (uid, tomato, "Demo probe", hash_token(secrets.token_urlsafe(32)), "demo", _utcnow_str(), _utcnow_str()))
+    dev = conn.execute("SELECT id FROM sensor_devices WHERE user_id=?", (uid,)).fetchone()["id"]
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for i, (m, t) in enumerate([(46, 27.5), (42, 28.4), (39, 29.6), (35, 30.1), (31, 29.2), (27, 28.0), (24, 26.8), (22, 26.1)]):
+        ts = (now - timedelta(minutes=(7 - i) * 30)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("INSERT INTO sensor_readings (device_id,farm_id,user_id,moisture,temp,source,created_at) VALUES (?,?,?,?,?,?,?)",
+                     (dev, tomato, uid, m, t, "device", ts))
+    # sample forecast inputs (illustrative numbers, shown as the farmer's own)
+    for fid, y, price, rem in [(rice, 1700, 34, 22000), (tomato, 6000, 22, 12000), (wheat, 1100, 45, 6000)]:
+        conn.execute("INSERT INTO forecast_inputs (user_id,farm_id,yield_per_acre,price_per_kg,remaining_cost,updated_at) VALUES (?,?,?,?,?,?)",
+                     (uid, fid, y, price, rem, _utcnow_str()))
+
+@app.route("/demo", methods=["POST"])
+def start_demo():
+    ip = client_ip()
+    if throttle_blocked("demo:" + ip, DEMO_PER_IP, 3600):
+        flash("Too many demo sessions from this network. Please try again in a while.", "error")
+        return redirect(url_for("login"))
+    conn = get_db()
+    purge_old_demos(conn)
+    if conn.execute("SELECT COUNT(*) FROM users WHERE role='demo'").fetchone()[0] >= DEMO_MAX_USERS:
+        conn.commit(); conn.close()
+        flash("The demo is very busy right now. Please try again shortly, or register a free account.", "error")
+        return redirect(url_for("login"))
+    throttle_hit("demo:" + ip)
+    tag = secrets.token_hex(5)
+    conn.execute("INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)",
+                 ("Demo Farmer", f"demo-{tag}@demo.invalid", generate_password_hash(secrets.token_urlsafe(32)), "demo"))
+    uid = conn.execute("SELECT id FROM users WHERE email=?", (f"demo-{tag}@demo.invalid",)).fetchone()["id"]
+    ensure_account_id(conn, uid)
+    seed_demo_data(conn, uid)
+    conn.commit(); conn.close()
+    _lang = session.get("lang")
+    session.clear()
+    if _lang: session["lang"] = _lang
+    session["user_id"] = uid; session["user_name"] = "Demo Farmer"; session["sv"] = 0; session["demo"] = True
+    session.permanent = False                       # ends when the browser closes
+    flash("👋 You are in a demo account with sample data. It is deleted after 24 hours. "
+          "<a href='/register'>Register</a> to keep your own farms.", "success")
+    return redirect(url_for("dashboard"))
+
+
 # ── Google OAuth Routes ─────────────────────────────────────────────
 @app.route("/login/google")
 def google_login():
@@ -1223,6 +1315,9 @@ def profile():
     uid  = user["id"]
     if request.method == "POST":
         action = request.form.get("action","")
+        if is_demo() and action in ("change_email", "change_password", "delete_account", "upload_photo"):
+            flash("That option is switched off in the demo account. Register a free account to use it.", "error")
+            return redirect(url_for("profile"))
         conn   = get_db()
 
         if action == "update_info":
@@ -1824,6 +1919,8 @@ def disease_page():
 @app.route("/api/disease-detect", methods=["POST"])
 @login_required
 def api_disease_detect():
+    if is_demo():
+        return demo_block_json()
     d = request.get_json(force=True) or {}
     crop_type = d.get("crop_type", "general")
     symptoms = d.get("symptoms", "")
@@ -2480,11 +2577,11 @@ def admin_panel():
     d7  = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     d30 = (now - timedelta(days=30)).strftime("%Y-%m-%d")
     users = {
-        "total": one("SELECT COUNT(*) FROM users"),
-        "new7": one("SELECT COUNT(*) FROM users WHERE substr(created_at,1,10)>=?", (d7,)),
-        "new30": one("SELECT COUNT(*) FROM users WHERE substr(created_at,1,10)>=?", (d30,)),
-        "google": one("SELECT COUNT(*) FROM users WHERE google_id IS NOT NULL AND google_id<>''"),
-        "with_farm": one("SELECT COUNT(DISTINCT user_id) FROM farms"),
+        "total": one("SELECT COUNT(*) FROM users WHERE role<>'demo'"),
+        "new7": one("SELECT COUNT(*) FROM users WHERE role<>'demo' AND substr(created_at,1,10)>=?", (d7,)),
+        "new30": one("SELECT COUNT(*) FROM users WHERE role<>'demo' AND substr(created_at,1,10)>=?", (d30,)),
+        "google": one("SELECT COUNT(*) FROM users WHERE role<>'demo' AND google_id IS NOT NULL AND google_id<>''"),
+        "with_farm": one("SELECT COUNT(DISTINCT user_id) FROM farms WHERE user_id IN (SELECT id FROM users WHERE role<>'demo')"),
         "push": one("SELECT COUNT(DISTINCT user_id) FROM push_subs"),
     }
     users["password"] = users["total"] - users["google"]
@@ -2498,7 +2595,7 @@ def admin_panel():
                       "users": one(f"SELECT COUNT(DISTINCT user_id) FROM {table}"),
                       "last30": one(f"SELECT COUNT(*) FROM {table} WHERE substr({datecol},1,10)>=?", (d30,)) if datecol else None})
     signups = [dict(r) for r in conn.execute(
-        "SELECT substr(created_at,1,10) AS day, COUNT(*) AS n FROM users WHERE substr(created_at,1,10)>=? GROUP BY day ORDER BY day",
+        "SELECT substr(created_at,1,10) AS day, COUNT(*) AS n FROM users WHERE role<>'demo' AND substr(created_at,1,10)>=? GROUP BY day ORDER BY day",
         ((now - timedelta(days=13)).strftime("%Y-%m-%d"),)).fetchall()]
     crops = [dict(r) for r in conn.execute(
         "SELECT LOWER(crop_type) AS crop, COUNT(*) AS n FROM farms GROUP BY LOWER(crop_type) ORDER BY n DESC LIMIT 8").fetchall()]
@@ -2615,6 +2712,8 @@ VISION_LIMIT, VISION_WINDOW = 12, 3600
 @app.route("/api/disease-image", methods=["POST"])
 @login_required
 def api_disease_image():
+    if is_demo():
+        return demo_block_json()
     uid = session["user_id"]
     now = time.time()
     hits = [t for t in _vision_hits.get(uid, []) if now - t < VISION_WINDOW]
@@ -2923,6 +3022,8 @@ def push_endpoint_ok(ep):
 @app.route("/api/push/subscribe", methods=["POST"])
 @login_required
 def api_push_subscribe():
+    if is_demo():
+        return demo_block_json()
     if not PUSH_ENABLED:
         return jsonify({"error": "Alerts are not configured on this server."}), 503
     b = request.get_json(silent=True) or {}
@@ -2957,6 +3058,8 @@ _last_test_push = {}
 @app.route("/api/push/test", methods=["POST"])
 @login_required
 def api_push_test():
+    if is_demo():
+        return demo_block_json()
     """Send a test notification to the signed-in user's own devices (once per 20 s)."""
     if not PUSH_ENABLED:
         return jsonify({"error": "Alerts are not configured on this server."}), 503

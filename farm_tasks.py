@@ -37,8 +37,8 @@ _TXT = {
                   "Up to {temp}°C expected. Irrigate in the early morning or evening, not at midday, and mulch if you can.",
                   "{temp}°C পর্যন্ত তাপমাত্রার সম্ভাবনা। দুপুরে নয়, ভোরে বা সন্ধ্যায় সেচ দিন; সম্ভব হলে মালচিং করুন।"),
  "irrigate":     ("Irrigate today", "আজ সেচ দিন",
-                  "Last irrigation was {days} days ago ({crop} usually needs water every ~{every} days) and no rain is expected.",
-                  "শেষ সেচ {days} দিন আগে ({crop} সাধারণত ~{every} দিন পরপর পানি চায়) এবং বৃষ্টির সম্ভাবনা নেই।"),
+                  "Last irrigation was {days} days ago ({crop} usually needs water every ~{every} days){rainnote}.",
+                  "শেষ সেচ {days} দিন আগে ({crop} সাধারণত ~{every} দিন পরপর পানি চায়){rainnote}।"),
  "irrigate_never": ("Check soil moisture", "মাটির আর্দ্রতা দেখুন",
                   "No irrigation has been logged for this farm yet. Check soil moisture and log your next irrigation.",
                   "এই খামারের কোনো সেচ এখনও লেখা নেই। মাটির আর্দ্রতা দেখুন এবং পরের সেচ লিখে রাখুন।"),
@@ -207,7 +207,9 @@ def build_tasks(farm, growth=None, last_irrigation=None, scan=None, wx=None, tod
         elif li is not None:
             days = (today - li).days
             if days >= every:
-                add("irrigate", days=days, crop=crop_label, every=every)
+                add("irrigate", days=days, crop=crop_label, every=every,
+                    rainnote=(" এবং বৃষ্টির সম্ভাবনা নেই" if bn else " and no rain is expected") if wx
+                    else (" (এখন আবহাওয়ার তথ্য নেই, তাই বৃষ্টি ধরা হয়নি)" if bn else " (no weather data right now, so rain is not considered)"))
         elif dap is not None and dap >= 0:
             add("irrigate_never")
         if ck == "rice" and not (wx and rain >= 5):
