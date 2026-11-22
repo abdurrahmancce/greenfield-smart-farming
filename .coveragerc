@@ -1,0 +1,11 @@
+[run]
+source = .
+omit =
+    tests/*
+    tools/*
+    venv*/*
+    */site-packages/*
+
+[report]
+show_missing = False
+skip_empty = True

@@ -11,7 +11,7 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen) ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A560%25-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-88%20passing-brightgreen) ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A560%25-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
 
 > Screenshots use demo data, not a real farmer's records.
 
@@ -39,7 +39,6 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 * **AI crop-disease photo check** — Gemini vision, two-model cross-check, multi-photo scans, deliberately humble confidence labels, and a measured accuracy script (`tools/eval_disease.py`).
 * **Soil sensors** — each sensor gets its own secret token; a device (or the included simulator, or a hand-typed reading) sends soil moisture/temperature over HTTPS. Readings are charted, drive a "soil is dry — irrigate" task and push alert (and quiet the schedule-based nudge when the soil is fine). The server side is tested; the ESP32 sketch in `tools/` has **not** been run on real hardware.
 * **Yield & profit/loss forecast** — plain arithmetic, not ML: area × yield per acre × price − costs, shown as a low / typical / high range with a break-even yield and price. Built-in yield ranges are rough Bangladesh figures that are *not* checked against official statistics, so every farm can enter its own yield, price and remaining costs. The page says plainly that it is an estimate.
-* **Seasons & reality check** — the forecast page groups farms by growing season (rice: Aus / Aman / Boro; other crops: Rabi / Kharif-1 / Kharif-2, taken from the planting month, a rough guide) and, after the expected harvest date, compares the income you recorded with the typical-case estimate. Soil sensors show a 7-day average / lowest / highest and daily averages, and the readings download as a spreadsheet-safe CSV.
 * **Money tracking** — income/expense log, per-farm profit & loss, per-acre figures, monthly trend, cost breakdown.
 * **Farm tools** — farms with map location, growth tracker, irrigation log, notes, crop calendar, NPK fertilizer calculator, weather, analytics.
 * **Market prices you can trust** — labelled reference values plus prices *you* record; trends only when there is enough real data.
@@ -70,8 +69,8 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
 
 ## 🧪 Testing & automation
 
-* **108 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin, CSP, soil sensors, forecast, seasons, demo accounts) run on every push via GitHub Actions.
-* **Coverage:** about **64%** of the app code is exercised by the tests (measured with `pytest-cov`); CI fails if it drops below **60%**. The lowest file is `vision.py` (~15%) because it calls the external AI service, which the tests do not hit. Coverage shows which lines ran, not that the app is bug-free.
+* **88 pytest tests** (auth, isolation, validation, offline sync, exports, push rules, admin, CSP, soil sensors, forecast, demo accounts) run on every push via GitHub Actions.
+* **Coverage:** about **63%** of the app code is exercised by the tests (measured with `pytest-cov`); CI fails if it drops below **60%**. The lowest file is `vision.py` (~15%) because it calls the external AI service, which the tests do not hit. Coverage shows which lines ran, not that the app is bug-free.
 * **Nightly encrypted PostgreSQL backup** (artifact kept 14 days, fails loudly), **keep-alive** and **weather-alert** workflows.
 * Run locally: `python -m pytest -q` (with coverage: `pip install pytest-cov` then `python -m pytest -q --cov`)
 
