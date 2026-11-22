@@ -1077,7 +1077,7 @@ def seed_demo_data(conn, uid):
     def d(days_ago): return (today - timedelta(days=days_ago)).isoformat()
     farms = [("Hurricane Plot", "Rice",   "Chittagong", 8.0, 70, "Active"),
              ("Cactus Field",   "Tomato", "Sylhet",     5.5, 35, "Planted"),
-             ("North Block",    "Wheat",  "Barishal",   4.0, 50, "Planted")]
+             ("North Block",    "Wheat",  "Barishal",   4.0, 20, "Planted")]
     ids = []
     for name, crop, loc, area, age, status in farms:
         conn.execute("INSERT INTO farms (user_id,farm_name,crop_type,location,area,planting_date,status) VALUES (?,?,?,?,?,?,?)",
@@ -1088,14 +1088,14 @@ def seed_demo_data(conn, uid):
             (rice, "expense", "Seeds", 6500, "Seed paddy", 68), (rice, "expense", "Fertilizer", 14200, "Urea + TSP", 40),
             (rice, "expense", "Labour", 18000, "Transplanting crew", 62),
             (tomato, "expense", "Seeds", 4200, "Seedlings", 33), (tomato, "expense", "Pesticide", 3100, "Fungicide spray", 12),
-            (wheat, "expense", "Fertilizer", 7600, "Basal dose", 45), (wheat, "income", "Sale", 5000, "Early green sale", 3)]:
+            (wheat, "expense", "Fertilizer", 7600, "Basal dose", 15), (wheat, "income", "Sale", 5000, "Early green sale", 3)]:
         conn.execute("INSERT INTO expense_log (farm_id,user_id,type,category,amount,description,date) VALUES (?,?,?,?,?,?,?)",
                      (fid, uid, typ, cat, amt, desc, d(ago)))
     for fid, ago, liters, method, mins in [(rice, 9, 9000, "Flood", 120), (rice, 14, 8500, "Flood", 110),
                                            (tomato, 4, 1800, "Drip", 45), (tomato, 8, 1700, "Drip", 45)]:
         conn.execute("INSERT INTO irrigation_log (farm_id,user_id,date,water_liters,method,duration_min,notes) VALUES (?,?,?,?,?,?,?)",
                      (fid, uid, d(ago), liters, method, mins, "Demo entry"))
-    for fid, ago, days, stage in [(rice, 70, 120, "Vegetative"), (tomato, 35, 90, "Flowering"), (wheat, 50, 110, "Vegetative")]:
+    for fid, ago, days, stage in [(rice, 70, 120, "Vegetative"), (tomato, 35, 90, "Flowering"), (wheat, 20, 110, "Seedling")]:
         conn.execute("INSERT INTO crop_growth (farm_id,user_id,planting_date,expected_days,harvest_date,growth_stage,notes) VALUES (?,?,?,?,?,?,?)",
                      (fid, uid, d(ago), days, (today + timedelta(days=days - ago)).isoformat(), stage, "Demo entry"))
     conn.execute("INSERT INTO crop_notes (farm_id,user_id,title,note,category) VALUES (?,?,?,?,?)",
@@ -3188,6 +3188,31 @@ SENSOR_KEEP_DAYS = 30
 def _sensor_base_url():
     return (APP_BASE_URL or request.host_url).rstrip("/")
 
+def _week_stats(conn, device_id, uid):
+    """Average / lowest / highest soil moisture over the last 7 Bangladesh days, plus one average per day.
+    One query per sensor (no per-day loop over rows). Returns None when there are no readings in that window."""
+    bd_today = (datetime.now(timezone.utc) + timedelta(hours=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+    days = []                                   # oldest -> newest; each is [start_utc, end_utc, label]
+    for i in range(6, -1, -1):
+        st = bd_today - timedelta(days=i)
+        days.append([(st - timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S"),
+                     (st - timedelta(hours=6) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"), st.strftime("%m-%d")])
+    cols, args = [], []
+    for k, (a_, b_, _l) in enumerate(days):
+        cols.append(f"SUM(CASE WHEN created_at>=? AND created_at<? THEN moisture END) AS s{k}, "
+                    f"SUM(CASE WHEN created_at>=? AND created_at<? THEN 1 ELSE 0 END) AS c{k}")
+        args += [a_, b_, a_, b_]
+    row = conn.execute("SELECT AVG(moisture) AS av, MIN(moisture) AS lo, MAX(moisture) AS hi, COUNT(*) AS n, " + ", ".join(cols) +
+                       " FROM sensor_readings WHERE device_id=? AND user_id=? AND created_at>=?",
+                       tuple(args) + (device_id, uid, days[0][0])).fetchone()
+    if not row or not row["n"]:
+        return None
+    per_day = []
+    for k, (_a, _b, label) in enumerate(days):
+        c = row[f"c{k}"] or 0
+        per_day.append({"label": label, "avg": (float(row[f"s{k}"]) / c) if c else None})
+    return {"avg": float(row["av"]), "min": float(row["lo"]), "max": float(row["hi"]), "n": int(row["n"]), "days": per_day}
+
 def _sensors_context(conn, uid, new_token=None, new_device=None):
     farms = [dict(r) for r in conn.execute("SELECT id, farm_name, crop_type FROM farms WHERE user_id=? ORDER BY farm_name", (uid,)).fetchall()]
     since = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
@@ -3207,6 +3232,7 @@ def _sensors_context(conn, uid, new_token=None, new_device=None):
         d["chart"] = {"labels": [_bd_label(p["created_at"]) for p in pts],
                       "moisture": [p["moisture"] for p in pts],
                       "temp": [p["temp"] for p in pts]}
+        d["week"] = _week_stats(conn, d["id"], uid)
         d["token_hint"] = d.get("token_hint") or ""
         devices.append(d)
     return {"farms": farms, "devices": devices, "new_token": new_token, "new_device": new_device,
@@ -3220,6 +3246,32 @@ def sensors_page():
     ctx = _sensors_context(conn, session["user_id"])
     conn.close()
     return render_template("sensors.html", **ctx)
+
+@app.route("/sensors/export.csv")
+@login_required
+def sensors_export():
+    """The user's own soil readings (newest 20,000, i.e. at most the 30 days we keep) as a spreadsheet-safe CSV."""
+    uid = session["user_id"]
+    if throttle_blocked("dl:%s" % uid, 20, 600):
+        return Response("Too many downloads, please wait a few minutes.", 429)
+    throttle_hit("dl:%s" % uid)
+    conn = get_db()
+    rows = conn.execute("""SELECT r.created_at, r.moisture, r.temp, r.source, d.name AS dev, f.farm_name
+                           FROM sensor_readings r JOIN sensor_devices d ON d.id=r.device_id JOIN farms f ON f.id=r.farm_id
+                           WHERE r.user_id=? ORDER BY r.id DESC LIMIT 20000""", (uid,)).fetchall()
+    conn.close()
+    def bd(ts):
+        try:
+            return (datetime.strptime(str(ts)[:19], "%Y-%m-%d %H:%M:%S") + timedelta(hours=6)).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return ""
+    body = exports.make_csv(["Time (Bangladesh, UTC+6)", "Time (UTC)", "Sensor", "Farm", "Moisture (%)", "Temperature (C)", "Source"],
+                            [[bd(r["created_at"]), str(r["created_at"])[:16], r["dev"], r["farm_name"], r["moisture"], r["temp"], r["source"]]
+                             for r in reversed(rows)])
+    resp = Response(body, mimetype="text/csv; charset=utf-8")
+    resp.headers["Content-Disposition"] = f'attachment; filename="greenfield-soil-readings-{datetime.now(timezone.utc).strftime("%Y-%m-%d")}.csv"'
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 @app.route("/sensors/add", methods=["POST"])
 @login_required
@@ -3359,8 +3411,11 @@ def forecast_rows(uid):
             pd_ = farm_tasks._d(f["planting_date"])
             if pd_:
                 harvest = (pd_ + timedelta(days=farm_tasks.EXPECTED_DAYS[ck])).isoformat()
+        today_bd = (datetime.now(timezone.utc) + timedelta(hours=6)).date().isoformat()
         rows.append({"farm": f, "ck": ck, "fc": res, "price_src": psrc, "price_note": pnote, "inp": inp,
-                     "income_so_far": t.get("income", 0.0), "harvest": harvest})
+                     "income_so_far": t.get("income", 0.0), "harvest": harvest,
+                     "season": fc.season_of(ck, f.get("planting_date")),
+                     "check": fc.actual_check(t.get("income", 0.0), (res.get("revenue") or [0, 0])[1] if res.get("ok") else 0, harvest, today_bd)})
     conn.close()
     return rows
 
@@ -3375,7 +3430,7 @@ def forecast_page():
                "profit": [sum(x["profit"][i] for x in ok) for i in range(3)],
                "income": [sum(x["income_total"][i] for x in ok) for i in range(3)],
                "cost": sum(x["cost"] for x in ok), "n": len(ok)}
-    return render_template("forecast.html", rows=rows, tot=tot, factor=int(fc.FARMGATE_FACTOR * 100),
+    return render_template("forecast.html", rows=rows, tot=tot, seasons=fc.season_summary(rows), factor=int(fc.FARMGATE_FACTOR * 100),
                            spread=int(fc.SPREAD * 100), maund=int(fc.MAUND_KG))
 
 @app.route("/forecast/save", methods=["POST"])

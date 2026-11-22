@@ -89,3 +89,56 @@ def forecast_farm(crop_key, area, price, expenses, income, yield_override=None, 
                     "profit" if profit[0] > 0 else "loss" if profit[2] < 0 else "uncertain"),
     })
     return out
+
+
+# Growing seasons (rough guide from the PLANTING month - real calendars vary by region and variety)
+_RICE = {"aus": ("Aus", "আউশ"), "aman": ("Aman", "আমন"), "boro": ("Boro", "বোরো")}
+_OTHER = {"rabi": ("Rabi (winter)", "রবি (শীত)"), "kharif1": ("Kharif-1 (pre-monsoon)", "খরিফ-১ (প্রাক-বর্ষা)"),
+          "kharif2": ("Kharif-2 (monsoon)", "খরিফ-২ (বর্ষা)")}
+
+
+def season_of(crop_key, planting_date):
+    """{'key','en','bn'} for the season a farm was planted in, or None if the date is missing/unreadable.
+    Rice: Mar-May = Aus, Jun-Oct = Aman, Nov-Feb = Boro.  Other crops: Nov-Feb = Rabi, Mar-Jun = Kharif-1, Jul-Oct = Kharif-2."""
+    try:
+        m = int(str(planting_date)[5:7])
+        if not 1 <= m <= 12 or str(planting_date)[4] != "-":
+            return None
+    except (TypeError, ValueError, IndexError):
+        return None
+    if crop_key == "rice":
+        k = "aus" if 3 <= m <= 5 else "aman" if 6 <= m <= 10 else "boro"
+        en, bn = _RICE[k]
+    else:
+        k = "rabi" if (m >= 11 or m <= 2) else "kharif1" if m <= 6 else "kharif2"
+        en, bn = _OTHER[k]
+    return {"key": k, "en": en, "bn": bn}
+
+
+def actual_check(income_so_far, typical_revenue, harvest_date, today_iso):
+    """Compare money actually recorded with the typical-case revenue estimate.
+    Only judged after the expected harvest date - before that, sales are simply not all in yet."""
+    if not income_so_far or income_so_far <= 0 or not typical_revenue or typical_revenue <= 0:
+        return None
+    pct = round(income_so_far / typical_revenue * 100)
+    passed = bool(harvest_date) and str(harvest_date) <= str(today_iso)
+    verdict = "early" if not passed else "below" if pct < 80 else "above" if pct > 120 else "close"
+    return {"pct": pct, "verdict": verdict, "recorded": round(income_so_far), "typical": round(typical_revenue)}
+
+
+def season_summary(rows):
+    """Group the farms that have a forecast by season -> list of dicts (sorted by season name)."""
+    g = {}
+    for r in rows:
+        x, se = r["fc"], r.get("season")
+        if not x.get("ok") or not se:
+            continue
+        a = g.setdefault(se["key"], {"en": se["en"], "bn": se["bn"], "n": 0, "acres": 0.0, "income": 0, "cost": 0, "profit": 0, "partial": False})
+        a["n"] += 1; a["acres"] += x["area"]; a["income"] += x["income_total"][1]
+        a["cost"] += x["cost"]; a["profit"] += x["profit"][1]; a["partial"] = a["partial"] or not x["costs_known"]
+    out = []
+    for a in sorted(g.values(), key=lambda z: z["en"]):
+        a["profit_per_acre"] = round(a["profit"] / a["acres"]) if a["acres"] else 0
+        a["acres"] = round(a["acres"], 1)
+        out.append(a)
+    return out

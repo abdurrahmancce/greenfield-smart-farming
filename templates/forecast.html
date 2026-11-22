@@ -41,6 +41,22 @@
 </div>
 {% endif %}
 
+{% if seasons %}
+<div class="card fc-card"><div class="card-header"><h3 class="card-title"><i class="fas fa-calendar-alt"></i> {{ tr('By season (typical case)','মৌসুম অনুযায়ী (সাধারণ ফলনে)') }}</h3></div>
+  <div class="card-body" style="overflow-x:auto">
+    <table class="table" style="width:100%;min-width:520px"><thead><tr>
+      <th>{{ tr('Season','মৌসুম') }}</th><th>{{ tr('Farms','খামার') }}</th><th>{{ tr('Acres','একর') }}</th><th>{{ tr('Income','আয়') }}</th><th>{{ tr('Cost','খরচ') }}</th><th>{{ tr('Profit','লাভ') }}</th><th>{{ tr('Profit / acre','লাভ / একর') }}</th></tr></thead><tbody>
+    {% for se in seasons %}
+      <tr><td><b>{{ tr(se.en, se.bn) }}</b></td><td>{{ se.n }}</td><td>{{ se.acres }}</td><td>{{ se.income|money }}</td><td>{{ se.cost|money }}</td>
+          <td class="{{ 'fc-neg' if se.profit < 0 else 'fc-pos' }}"><b>{{ se.profit|money }}</b>{% if se.partial %} ⚠️{% endif %}</td>
+          <td class="{{ 'fc-neg' if se.profit_per_acre < 0 else 'fc-pos' }}">{{ se.profit_per_acre|money }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    <p class="fc-note" style="margin-top:8px">{{ tr('Seasons are a rough guide taken from each farm\'s planting month (rice: Aus Mar–May, Aman Jun–Oct, Boro Nov–Feb; other crops: Rabi, Kharif-1, Kharif-2). Real calendars differ by region and variety. ⚠️ = some costs still to come are not entered, so that profit is an upper bound.',
+      'মৌসুম প্রতিটি খামারের রোপণের মাস থেকে নেওয়া মোটামুটি ধারণা (ধান: আউশ মার্চ–মে, আমন জুন–অক্টোবর, বোরো নভেম্বর–ফেব্রুয়ারি; অন্য ফসল: রবি, খরিফ-১, খরিফ-২)। অঞ্চল ও জাতভেদে আসল ক্যালেন্ডার আলাদা। ⚠️ = বাকি খরচ দেওয়া নেই, তাই লাভ সর্বোচ্চ সীমা।') }}</p>
+  </div></div>
+{% endif %}
+
 {% if tot and tot.partial %}<p class="fc-note" style="margin:-8px 0 14px">⚠️ {{ tr('Some farms have no “costs still to come” yet — those profits are upper bounds.','কিছু খামারে “বাকি খরচ” দেওয়া নেই — সেগুলোর লাভ সর্বোচ্চ সীমা।') }}</p>{% endif %}
 {% if not rows %}
 <div class="card"><div class="card-body fc-note" style="text-align:center;padding:36px">{{ tr('Add a farm first (Farm Management) to see a forecast.','পূর্বাভাস দেখতে আগে একটি খামার যোগ করুন।') }}</div></div>
@@ -49,7 +65,7 @@
 {% for r in rows %}
 {% set f = r.farm %}{% set x = r.fc %}
 <div class="card fc-card" id="farm{{ f.id }}">
-  <div class="card-header"><h3 class="card-title"><i class="fas fa-seedling"></i> {{ f.farm_name }} <span class="fc-note">· {{ f.crop_type }} · {{ f.area }} {{ tr('acres','একর') }}{% if r.harvest %} · {{ tr('expected harvest','প্রত্যাশিত ফসল তোলা') }} {{ r.harvest }}{% endif %}</span></h3></div>
+  <div class="card-header"><h3 class="card-title"><i class="fas fa-seedling"></i> {{ f.farm_name }} <span class="fc-note">· {{ f.crop_type }} · {{ f.area }} {{ tr('acres','একর') }}{% if r.season %} · {{ tr(r.season.en, r.season.bn) }}{% endif %}{% if r.harvest %} · {{ tr('expected harvest','প্রত্যাশিত ফসল তোলা') }} {{ r.harvest }}{% endif %}</span></h3></div>
   <div class="card-body">
     {% if x.ok %}
       <div class="fc-wrap"><table class="fc-table">
@@ -78,6 +94,13 @@
         {% if not x.costs_known %} · {{ tr('Costs still to come are not included yet.','বাকি খরচ এখনো ধরা হয়নি।') }}{% endif %}
         {% if r.income_so_far %} · {{ tr('Income already recorded:','এ পর্যন্ত আয় লেখা আছে:') }} {{ r.income_so_far|money }} ({{ tr('not counted twice','দুবার গোনা হয়নি') }}){% endif %}
       </p>
+      {% if r.check %}
+      <p class="fc-note">📊 {{ tr('Forecast vs. recorded:','পূর্বাভাস বনাম লেখা আয়:') }} {{ r.check.recorded|money }} {{ tr('recorded','লেখা আছে') }} = <b>{{ r.check.pct }}%</b> {{ tr('of the typical-case estimate','সাধারণ ফলনের হিসাবের') }} ({{ r.check.typical|money }}).
+        {% if r.check.verdict == 'early' %}{{ tr('Judged only after the expected harvest date, because sales are still coming in.','প্রত্যাশিত ফসল তোলার তারিখের পর বিচার করা হবে, কারণ বিক্রি এখনো চলছে।') }}
+        {% elif r.check.verdict == 'close' %}{{ tr('The estimate was close to what you recorded.','হিসাব আপনার লেখা আয়ের কাছাকাছি ছিল।') }}
+        {% elif r.check.verdict == 'below' %}{{ tr('Recorded income is below the estimate — either sales are not all entered yet, or yield/price was lower than assumed. Check your yield and price numbers.','লেখা আয় হিসাবের চেয়ে কম — হয় সব বিক্রি লেখা হয়নি, নয়তো ফলন/দাম ধরার চেয়ে কম ছিল। নিজের ফলন ও দামের সংখ্যা দেখুন।') }}
+        {% else %}{{ tr('Recorded income is above the estimate — your yield or price was better than assumed, or the inputs were too cautious.','লেখা আয় হিসাবের চেয়ে বেশি — ফলন বা দাম ধরার চেয়ে ভালো ছিল, অথবা হিসাব বেশি সাবধান ছিল।') }}{% endif %}</p>
+      {% endif %}
     {% else %}
       <p class="fc-note">
         {% if x.reason == 'no_area' %}{{ tr('This farm has no area set — edit the farm and add its size in acres.','এই খামারের আয়তন দেওয়া নেই — খামার এডিট করে একর লিখুন।') }}

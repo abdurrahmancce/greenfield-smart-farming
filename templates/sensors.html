@@ -83,6 +83,9 @@
             'এখনো কোনো সেন্সর নেই। বাঁ দিকে একটি তৈরি করুন — তারপর দেখানো কমান্ড, tools/sensor_simulator.py বা হাতে লিখে রিডিং দিন।') }}
     </div></div>
     {% endif %}
+    {% if devices %}
+    <p style="margin:0 0 10px;text-align:right"><a class="btn btn-secondary btn-sm" href="{{ url_for('sensors_export') }}"><i class="fas fa-file-csv"></i> {{ tr('Download readings (CSV)','রিডিং ডাউনলোড (CSV)') }}</a></p>
+    {% endif %}
     {% for d in devices %}
     <div class="card sn-dev">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -104,6 +107,16 @@
           </div>
           {% if fresh and d.last.moisture < dry %}<div class="sn-warn" style="background:#FFEBEE;border-color:#EF9A9A;color:#8E0000;margin-bottom:10px">🏜️ {{ tr('Dry soil — irrigate in the early morning or evening.','মাটি শুকনো — ভোরে বা সন্ধ্যায় সেচ দিন।') }}</div>{% endif %}
           {% if fresh and d.last.moisture > wet %}<div class="sn-warn" style="background:#E3F2FD;border-color:#90CAF9;color:#0D47A1;margin-bottom:10px">🌊 {{ tr('Very wet — skip irrigation and check drainage.','অনেক ভেজা — সেচ বন্ধ রাখুন, নিকাশি দেখুন।') }}</div>{% endif %}
+          {% if d.week %}
+          <div class="sn-note" style="margin:6px 0 4px"><b>{{ tr('Last 7 days','গত ৭ দিন') }}:</b>
+            {{ tr('average','গড়') }} <b>{{ '%.0f'|format(d.week.avg) }}%</b> · {{ tr('lowest','সর্বনিম্ন') }} {{ '%.0f'|format(d.week.min) }}% · {{ tr('highest','সর্বোচ্চ') }} {{ '%.0f'|format(d.week.max) }}% · {{ d.week.n }} {{ tr('readings','রিডিং') }}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            {% for day in d.week.days %}
+            <span class="sn-note" style="padding:3px 8px;border-radius:8px;border:1px solid var(--border,#ddd)">{{ day.label }}:
+              {% if day.avg is none %}—{% else %}<b class="{{ 'sn-dry' if day.avg < dry else ('sn-wet' if day.avg > wet else 'sn-ok') }}">{{ '%.0f'|format(day.avg) }}%</b>{% endif %}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
           <div class="sn-chart"><canvas id="snc{{ d.id }}"></canvas></div>
           <script type="application/json" id="snd{{ d.id }}">{{ d.chart|tojson }}</script>
         {% else %}
