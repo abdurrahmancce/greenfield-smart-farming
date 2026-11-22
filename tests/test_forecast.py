@@ -6,10 +6,10 @@ from test_sensors import _user, _count
 def test_arithmetic_and_break_even():
     r = fc.forecast_farm("rice", 2, 30.0, expenses=10000, income=0, remaining_cost=5000)
     assert r["costs_known"]
-    assert r["ok"] and r["yield_per_acre"] == [1000, 1500, 2000]
-    assert r["kg"] == [2000, 3000, 4000] and r["revenue"] == [60000, 90000, 120000]
-    assert r["cost"] == 15000 and r["profit"] == [45000, 75000, 105000]
-    assert r["break_even_price"] == 5.0 and r["break_even_yield"] == 250
+    assert r["ok"] and r["yield_per_acre"] == [1000, 1350, 1900]
+    assert r["kg"] == [2000, 2700, 3800] and r["revenue"] == [60000, 81000, 114000]
+    assert r["cost"] == 15000 and r["profit"] == [45000, 66000, 99000]
+    assert r["break_even_price"] == 5.6 and r["break_even_yield"] == 250
     assert r["verdict"] == "profit"
 
 
@@ -25,8 +25,8 @@ def test_without_remaining_costs_the_verdict_is_only_an_upper_bound():
 
 
 def test_recorded_income_is_not_counted_twice():
-    r = fc.forecast_farm("rice", 1, 30.0, 0, income=30000)       # forecast mid = 45000, already sold 30000
-    assert r["income_total"][1] == 45000 and r["income_total"][0] == 30000
+    r = fc.forecast_farm("rice", 1, 30.0, 0, income=30000)       # forecast mid = 40500, already sold 30000
+    assert r["income_total"][1] == 40500 and r["income_total"][0] == 30000
     r = fc.forecast_farm("rice", 1, 1.0, 0, income=30000)         # already earned more than the forecast
     assert r["income_total"] == [30000, 30000, 30000]
 
