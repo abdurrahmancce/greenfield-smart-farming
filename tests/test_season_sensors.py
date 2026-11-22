@@ -105,3 +105,15 @@ def test_week_summary_and_csv_are_private_and_safe(env):
     # anonymous visitors are sent to the login page
     anon = env.app.test_client().get("/sensors/export.csv")
     assert anon.status_code in (301, 302, 303) and "login" in anon.headers["Location"]
+
+
+def test_break_even_hidden_while_costs_are_zero(env):
+    c = env.app.test_client(); c.post("/demo")
+    conn = env.get_db()
+    conn.execute("DELETE FROM expense_log"); conn.execute("DELETE FROM forecast_inputs"); conn.commit(); conn.close()
+    html = c.get("/forecast").get_data(as_text=True)
+    assert "Break-even is shown once some cost is entered" in html and "Break-even: about" not in html
+    conn = env.get_db()
+    fid = conn.execute("SELECT id FROM farms LIMIT 1").fetchone()["id"]; conn.close()
+    c.post("/forecast/save", data={"farm_id": fid, "yield_per_acre": "", "price_per_kg": "", "remaining_cost": "5000"})
+    assert "Break-even: about" in c.get("/forecast").get_data(as_text=True)

@@ -84,8 +84,8 @@
         {% elif x.verdict == 'profit' %}✅ {{ tr('Even the low case is in profit.','কম ফলনেও লাভ থাকার কথা।') }}
         {% elif x.verdict == 'loss' %}⚠️ {{ tr('Even the high case is a loss at these numbers — check price and costs.','এই সংখ্যায় ভালো ফলনেও ক্ষতি — দাম ও খরচ যাচাই করুন।') }}
         {% else %}↕️ {{ tr('The result depends on the yield: low yield loses money, a good one earns.','ফলনের ওপর নির্ভর করছে: কম ফলনে ক্ষতি, ভালো ফলনে লাভ।') }}{% endif %}
-        {{ tr('Break-even: about','ক্ষতি এড়াতে লাগবে প্রায়') }} <b>{{ '{:,.0f}'.format(x.break_even_yield) }} {{ tr('kg/acre at','কেজি/একর, দামে') }} ৳{{ '%g'|format(x.price) }}/kg</b>
-        {{ tr('or a price of','অথবা দাম') }} <b>৳{{ '%g'|format(x.break_even_price) }}/kg</b> {{ tr('at the typical yield.','সাধারণ ফলনে।') }}
+        {% if x.cost and x.cost > 0 %}{{ tr('Break-even: about','ক্ষতি এড়াতে লাগবে প্রায়') }} <b>{{ '{:,.0f}'.format(x.break_even_yield) }} {{ tr('kg/acre at','কেজি/একর, দামে') }} ৳{{ '%g'|format(x.price) }}/kg</b>
+        {{ tr('or a price of','অথবা দাম') }} <b>৳{{ '%g'|format(x.break_even_price) }}/kg</b> {{ tr('at the typical yield.','সাধারণ ফলনে।') }}{% else %}{{ tr('Break-even is shown once some cost is entered (so far costs are ৳0).','কিছু খরচ লেখা হলে ক্ষতি-এড়ানোর হিসাব দেখানো হবে (এখনো খরচ ৳০)।') }}{% endif %}
       </p>
       <p class="fc-note">
         {{ tr('Yield:','ফলন:') }} {% if x.yield_source == 'yours' %}{{ tr('your number','আপনার দেওয়া সংখ্যা') }} (±{{ spread }}%){% else %}{{ tr('rough typical range for this crop','এই ফসলের মোটামুটি সাধারণ সীমা') }}{% endif %} ·
