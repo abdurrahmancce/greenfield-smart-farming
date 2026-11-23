@@ -865,6 +865,8 @@ def _owm_icon(code):
 
 def _owm_tip(d):
     t,h,w = d["temperature"],d["humidity"],d["wind_speed"]
+    if d.get("icon") in ("bolt",):  return "Thunderstorm now — stay out of open fields and do not spray."
+    if d.get("icon") == "cloud-rain": return "It is raining now — avoid spraying and heavy field work until it clears."
     if t>=35:  return "Extreme heat — water at dawn and dusk only."
     if t<=10:  return "Cold stress risk — protect seedlings tonight."
     if h>=85:  return "High humidity — watch for fungal disease."
@@ -1929,146 +1931,6 @@ def api_disease_detect():
         return jsonify({"error": "Please describe the symptoms"}), 400
     result = detect_disease(crop_type, symptoms, additional)
     return jsonify(result)
-
-# ══════════════════════════════════════════════════════════════════
-#  CROP GROWTH TRACKER
-# ══════════════════════════════════════════════════════════════════
-@app.route("/growth")
-@login_required
-def growth_page():
-    uid = current_user()["id"]
-    conn = get_db()
-    ph = "%s" if USE_POSTGRES else "?"
-    farms = conn.execute(
-        f"SELECT id, farm_name, crop_type, planting_date FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
-    ).fetchall()
-    growth_records = conn.execute(
-        f"""SELECT g.*, f.farm_name, f.crop_type FROM crop_growth g
-            JOIN farms f ON g.farm_id=f.id
-            WHERE g.user_id={ph} ORDER BY g.created_at DESC""", (uid,)
-    ).fetchall()
-    conn.close()
-    today = datetime.now().strftime("%Y-%m-%d")
-    return render_template("growth.html", farms=farms, records=growth_records, today=today)
-
-@app.route("/growth/add", methods=["POST"])
-@login_required
-def add_growth():
-    uid = current_user()["id"]
-    planting_date= valid_date(request.form.get("planting_date"))
-    expected_days= to_int(request.form.get("expected_days", 90), 1, 1500, 90)
-    growth_stage = clip(request.form.get("growth_stage","Seedling"), 40)
-    notes        = clip(request.form.get("notes",""), 1000)
-    conn = get_db()
-    farm_id = owned_farm_id(conn, uid, request.form.get("farm_id"))
-    if not farm_id or not planting_date:
-        conn.close()
-        flash("Choose one of your farms and a valid planting date.", "error")
-        return redirect(url_for("growth_page"))
-    ph = "%s" if USE_POSTGRES else "?"
-    # Calculate harvest date
-    from datetime import date, timedelta
-    pd = datetime.strptime(planting_date, "%Y-%m-%d")
-    harvest_date = (pd + timedelta(days=expected_days)).strftime("%Y-%m-%d")
-    conn.execute(
-        f"INSERT INTO crop_growth (farm_id,user_id,planting_date,expected_days,harvest_date,growth_stage,notes) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})",
-        (farm_id, uid, planting_date, expected_days, harvest_date, growth_stage, notes)
-    )
-    conn.commit()
-    conn.close()
-    flash("✅ Growth record added.", "success")
-    return redirect(url_for("growth_page"))
-
-@app.route("/growth/update/<int:gid>", methods=["POST"])
-@login_required
-def update_growth(gid):
-    uid = current_user()["id"]
-    growth_stage = request.form.get("growth_stage","")
-    notes        = request.form.get("notes","")
-    conn = get_db()
-    ph = "%s" if USE_POSTGRES else "?"
-    conn.execute(
-        f"UPDATE crop_growth SET growth_stage={ph}, notes={ph} WHERE id={ph} AND user_id={ph}",
-        (growth_stage, notes, gid, uid)
-    )
-    conn.commit()
-    conn.close()
-    flash("✅ Growth stage updated.", "success")
-    return redirect(url_for("growth_page"))
-
-@app.route("/growth/delete/<int:gid>", methods=["POST"])
-@login_required
-def delete_growth(gid):
-    uid = current_user()["id"]
-    conn = get_db()
-    ph = "%s" if USE_POSTGRES else "?"
-    conn.execute(f"DELETE FROM crop_growth WHERE id={ph} AND user_id={ph}", (gid, uid))
-    conn.commit()
-    conn.close()
-    flash("Growth record deleted.", "success")
-    return redirect(url_for("growth_page"))
-
-
-# ══════════════════════════════════════════════════════════════════
-#  IRRIGATION LOG
-# ══════════════════════════════════════════════════════════════════
-@app.route("/irrigation")
-@login_required
-def irrigation_page():
-    uid = current_user()["id"]
-    conn = get_db()
-    ph = "%s" if USE_POSTGRES else "?"
-    farms = conn.execute(
-        f"SELECT id, farm_name, crop_type FROM farms WHERE user_id={ph} ORDER BY farm_name", (uid,)
-    ).fetchall()
-    logs = conn.execute(
-        f"""SELECT i.*, f.farm_name FROM irrigation_log i
-            JOIN farms f ON i.farm_id=f.id
-            WHERE i.user_id={ph} ORDER BY i.date DESC LIMIT 50""", (uid,)
-    ).fetchall()
-    # Weather suggestion
-    weather_tip = ""
-    try:
-        loc = "Chittagong"
-        resp = __import__("requests").get(
-            f"https://api.openweathermap.org/data/2.5/forecast?q={loc}&appid={OPENWEATHER_KEY}&units=metric&cnt=8",
-            timeout=5
-        ).json()
-        rain_soon = any(
-            "rain" in item.get("weather",[{}])[0].get("main","").lower()
-            for item in resp.get("list",[])[:4]
-        )
-        weather_tip = "🌧️ Rain expected in the next 24 hours — irrigation may not be needed." if rain_soon else "☀️ No rain expected — consider irrigating your crops."
-    except Exception:
-        pass
-    conn.close()
-    today = datetime.now().strftime("%Y-%m-%d")
-    return render_template("irrigation.html", farms=farms, logs=logs, weather_tip=weather_tip, today=today)
-
-@app.route("/irrigation/add", methods=["POST"])
-@login_required
-def add_irrigation():
-    uid = current_user()["id"]
-    conn = get_db()
-    ok, msg = save_irrigation_entry(conn, uid, request.form)
-    conn.close()
-    if request.headers.get("X-GF-Fetch"):
-        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 400)
-    flash(msg, "success" if ok else "error")
-    return redirect(url_for("irrigation_page"))
-
-@app.route("/irrigation/delete/<int:iid>", methods=["POST"])
-@login_required
-def delete_irrigation(iid):
-    uid = current_user()["id"]
-    conn = get_db()
-    ph = "%s" if USE_POSTGRES else "?"
-    conn.execute(f"DELETE FROM irrigation_log WHERE id={ph} AND user_id={ph}", (iid, uid))
-    conn.commit()
-    conn.close()
-    flash("Log deleted.", "success")
-    return redirect(url_for("irrigation_page"))
-
 
 # ══════════════════════════════════════════════════════════════════
 #  FARM EXPENSE TRACKER
@@ -3191,6 +3053,10 @@ from routes.sensors import bp as _sensors_bp, MAX_DEVICES_PER_USER, SENSOR_KEEP_
 from routes.forecast import bp as _forecast_bp, _price_for, forecast_rows                              # noqa: E402,F401
 app.register_blueprint(_sensors_bp)
 app.register_blueprint(_forecast_bp)
+from routes.growth import bp as _growth_bp          # noqa: E402
+from routes.irrigation import bp as _irrigation_bp  # noqa: E402
+app.register_blueprint(_growth_bp)
+app.register_blueprint(_irrigation_bp)
 
 
 # ── Entry ─────────────────────────────────────────────────────────

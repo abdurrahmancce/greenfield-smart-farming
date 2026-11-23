@@ -611,6 +611,8 @@ BN = {
     "High humidity — watch for fungal disease.": "আর্দ্রতা বেশি — ছত্রাকজনিত রোগের দিকে নজর রাখুন।",
     "Low humidity — increase irrigation frequency.": "আর্দ্রতা কম — সেচ আরও ঘন ঘন দিন।",
     "Strong winds — delay spraying and secure tall crops.": "জোরালো বাতাস — স্প্রে পিছিয়ে দিন এবং লম্বা ফসল বেঁধে রাখুন।",
+    "Thunderstorm now — stay out of open fields and do not spray.": "এখন বজ্রসহ ঝড় — খোলা মাঠে যাবেন না, স্প্রে করবেন না।",
+    "It is raining now — avoid spraying and heavy field work until it clears.": "এখন বৃষ্টি হচ্ছে — আকাশ পরিষ্কার না হওয়া পর্যন্ত স্প্রে ও ভারী মাঠের কাজ এড়িয়ে চলুন।",
     "Conditions look good for field operations today.": "আজ মাঠের কাজের জন্য আবহাওয়া ভালো।",
     "Good conditions for farming today.": "আজ চাষাবাদের জন্য আবহাওয়া ভালো।",
 

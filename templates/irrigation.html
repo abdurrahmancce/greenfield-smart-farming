@@ -43,7 +43,7 @@
     <div class="card">
       <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> Log Irrigation</h3></div>
       <div class="card-body">
-        <form method="POST" action="{{ url_for('add_irrigation') }}">
+        <form method="POST" action="{{ url_for('irrigation.add_irrigation') }}">
           <div class="form-group">
             <label class="form-label">Farm</label>
             <select name="farm_id" class="form-control" required>
@@ -160,7 +160,7 @@
               </td>
               <td style="padding:10px 14px;font-size:12px;color:var(--muted)">{{ log.notes or '—' }}</td>
               <td style="padding:10px 14px">
-                <form method="POST" action="{{ url_for('delete_irrigation', iid=log.id) }}"
+                <form method="POST" action="{{ url_for('irrigation.delete_irrigation', iid=log.id) }}"
                       data-confirm="Delete this log?">
                   <button type="submit" style="background:none;border:none;color:#EF5350;cursor:pointer;font-size:13px">
                     <i class="fas fa-trash"></i>

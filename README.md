@@ -11,7 +11,7 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-111%20passing-brightgreen) ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A560%25-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-112%20passing-brightgreen) ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A560%25-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
 
 > Screenshots use demo data, not a real farmer's records.
 
@@ -104,7 +104,7 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
                       GitHub Actions: tests · alerts every 3 h · nightly backup · keep-alive
 ```
 
-Main modules: `app.py` (core, DB wrapper, most routes), `routes/sensors.py` and `routes/forecast.py` (Flask blueprints, split out first; more groups can follow), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `forecast.py` (yield/profit arithmetic), `tools/sensor_simulator.py` + `tools/esp32_soil_sensor.ino` (sensor demo), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
+Main modules: `app.py` (core, DB wrapper, most routes), `routes/` (Flask blueprints: sensors, forecast, growth, irrigation; more groups can follow), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `forecast.py` (yield/profit arithmetic), `tools/sensor_simulator.py` + `tools/esp32_soil_sensor.ino` (sensor demo), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
 
 ## ⚙️ Run locally
 

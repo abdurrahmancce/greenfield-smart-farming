@@ -377,8 +377,8 @@
       <a class="nav-link" href="{{ url_for('notes') }}"><i class="fas fa-book-open"></i> {{ 'খামার নোট' if is_bn else 'Farm Notes' }}</a>
 
       <div class="nav-section" style="margin-top:6px">{{ 'খামার টুলস' if is_bn else 'Farm Tools' }}</div>
-      <a class="nav-link" href="{{ url_for('growth_page') }}"><i class="fas fa-seedling"></i> {{ 'ফসল ট্র্যাকার' if is_bn else 'Growth Tracker' }}</a>
-      <a class="nav-link" href="{{ url_for('irrigation_page') }}"><i class="fas fa-tint"></i> {{ 'সেচ লগ' if is_bn else 'Irrigation Log' }}</a>
+      <a class="nav-link" href="{{ url_for('growth.growth_page') }}"><i class="fas fa-seedling"></i> {{ 'ফসল ট্র্যাকার' if is_bn else 'Growth Tracker' }}</a>
+      <a class="nav-link" href="{{ url_for('irrigation.irrigation_page') }}"><i class="fas fa-tint"></i> {{ 'সেচ লগ' if is_bn else 'Irrigation Log' }}</a>
       <a class="nav-link" href="{{ url_for('expenses_page') }}"><i class="fas fa-coins"></i> {{ 'আয়-ব্যয় ট্র্যাকার' if is_bn else 'Expense Tracker' }}</a>
       <a class="nav-link" href="{{ url_for('sensors.sensors_page') }}"><i class="fas fa-satellite-dish"></i> {{ 'মাটির সেন্সর' if is_bn else 'Soil Sensors' }}</a>
 
