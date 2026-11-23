@@ -11,7 +11,7 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 **Code:** https://github.com/abdurrahmancce/greenfield-smart-farming
 
 [![CI](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml/badge.svg)](https://github.com/abdurrahmancce/greenfield-smart-farming/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen) ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A560%25-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
+![Python](https://img.shields.io/badge/python-3.12-blue) ![Flask](https://img.shields.io/badge/flask-3.1-lightgrey) ![Tests](https://img.shields.io/badge/tests-111%20passing-brightgreen) ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A560%25-brightgreen) ![PWA](https://img.shields.io/badge/PWA-installable-green)
 
 > Screenshots use demo data, not a real farmer's records.
 
@@ -38,7 +38,7 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 * **Works without signal** — expenses and irrigation entered offline are stored on the phone and synced automatically when the connection returns, with per-entry IDs so nothing is saved twice.
 * **AI crop-disease photo check** — Gemini vision, two-model cross-check, multi-photo scans, deliberately humble confidence labels, and a measured accuracy script (`tools/eval_disease.py`).
 * **Soil sensors** — each sensor gets its own secret token; a device (or the included simulator, or a hand-typed reading) sends soil moisture/temperature over HTTPS. Readings are charted, drive a "soil is dry — irrigate" task and push alert (and quiet the schedule-based nudge when the soil is fine). The server side is tested; the ESP32 sketch in `tools/` has **not** been run on real hardware.
-* **Yield & profit/loss forecast** — plain arithmetic, not ML: area × yield per acre × price − costs, shown as a low / typical / high range with a break-even yield and price. The "typical" yield of 9 crops is anchored to Bangladesh national averages (BBS/DAE; sources in [docs/YIELD_SOURCES.md](docs/YIELD_SOURCES.md)); jute, garlic, chilli and ginger are still unchecked estimates, and low/high ends are judgement, so every farm can enter its own yield, price and remaining costs. The page says plainly that it is an estimate.
+* **Yield & profit/loss forecast** — plain arithmetic, not ML: area × yield per acre × price − costs, shown as a low / typical / high range with a break-even yield and price. The "typical" yield is the national average from the BBS Yearbook of Agricultural Statistics 2023 (sources in [docs/YIELD_SOURCES.md](docs/YIELD_SOURCES.md); chilli is less certain), and low/high ends are judgement, so every farm can enter its own yield, price and remaining costs. The page says plainly that it is an estimate.
 * **Seasons & reality check** — the forecast page groups farms by growing season (rice: Aus / Aman / Boro; other crops: Rabi / Kharif-1 / Kharif-2, taken from the planting month, a rough guide) and, after the expected harvest date, compares the income you recorded with the typical-case estimate. Soil sensors show a 7-day average / lowest / highest and daily averages, and the readings download as a spreadsheet-safe CSV.
 * **Money tracking** — income/expense log, per-farm profit & loss, per-acre figures, monthly trend, cost breakdown.
 * **Farm tools** — farms with map location, growth tracker, irrigation log, notes, crop calendar, NPK fertilizer calculator, weather, analytics.
@@ -53,9 +53,13 @@ A multi-user smart-farming web app for Bangladeshi farmers: farms, crop-aware da
 * Market prices are not live: the government source (DAM) publishes daily prices only as downloadable files, so the app shows approximate reference values and the prices users record themselves.
 * Task rules are general guidance, not field-specific advice.
 * Free hosting sleeps after ~15 min without visitors, so the first page can take ~30-50 s while the server wakes up - it is not broken, just wait. A monitor pings `/healthz` every few minutes to keep it awake, but a fresh deploy or restart still has a cold start.
-* The nightly backup runs, but restoring from it has not been tested yet.
+* The nightly backup runs, but restoring from it has not been tested yet; the drill is written in [docs/RESTORE.md](docs/RESTORE.md).
 * The server-made PDF report is English-only (Bangla needs a shaping font); the browser's print / save-as-PDF on the Farm Report page handles Bangla. CSV files open correctly in Excel with Bangla text.
 * Offline entries (expenses / irrigation) are kept in the phone's browser storage until they sync; clearing the browser's site data before they sync deletes them.
+
+## ♿ Lighthouse (local run, Lighthouse 12, desktop Chrome, Login page)
+
+Accessibility **100**, SEO **100**, Best practices 96, Performance 87 (Register page: accessibility 96, SEO 100). Measured on a local server with no internet, so the console-error check (blocked external fonts) is not meaningful, and scores on the live Render site may differ. Remaining notes on Register: small tap targets and one small font size.
 
 ## 🔒 Security
 
@@ -100,7 +104,7 @@ A full audit-and-fix pass is documented in [`SECURITY.md`](SECURITY.md). Highlig
                       GitHub Actions: tests · alerts every 3 h · nightly backup · keep-alive
 ```
 
-Main modules: `app.py` (routes, DB wrapper), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `forecast.py` (yield/profit arithmetic), `tools/sensor_simulator.py` + `tools/esp32_soil_sensor.ino` (sensor demo), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
+Main modules: `app.py` (core, DB wrapper, most routes), `routes/sensors.py` and `routes/forecast.py` (Flask blueprints, split out first; more groups can follow), `farm_tasks.py` (task rules), `vision.py` (disease AI), `exports.py` (CSV/PDF), `forecast.py` (yield/profit arithmetic), `tools/sensor_simulator.py` + `tools/esp32_soil_sensor.ino` (sensor demo), `i18n.py` (Bangla), `static/sw.js` + `static/js/offline-sync.js` (PWA/offline), `static/js/ui.js` (CSP-safe click handling), `static/vendor/` (self-hosted Chart.js, Leaflet, Font Awesome).
 
 ## ⚙️ Run locally
 
@@ -141,7 +145,7 @@ Push to `main` → GitHub Actions runs tests → Render redeploys automatically.
 * Tested restore procedure for the nightly backups
 * SMS alerts (needs a paid gateway); Bangla fonts in the server PDF
 * Real-hardware test of the soil sensor sketch; sensor calibration per crop
-* Source the remaining forecast yields (jute, garlic, chilli, ginger) from the BBS Yearbook tables
+* Confirm the chilli yield basis (green vs dry) in the BBS Yearbook
 
 ## 👨‍💻 Author
 

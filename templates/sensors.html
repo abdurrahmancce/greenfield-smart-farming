@@ -43,7 +43,7 @@
       <div class="card-header"><h3 class="card-title"><i class="fas fa-plus-circle"></i> {{ tr('Add a sensor','সেন্সর যোগ করুন') }}</h3></div>
       <div class="card-body">
         {% if farms %}
-        <form method="POST" action="{{ url_for('sensors_add') }}">
+        <form method="POST" action="{{ url_for('sensors.sensors_add') }}">
           <div class="form-group"><label class="form-label">{{ tr('Farm','খামার') }}</label>
             <select name="farm_id" class="form-control" required>
               <option value="">— {{ tr('Select Farm','খামার বাছুন') }} —</option>
@@ -84,13 +84,13 @@
     </div></div>
     {% endif %}
     {% if devices %}
-    <p style="margin:0 0 10px;text-align:right"><a class="btn btn-secondary btn-sm" href="{{ url_for('sensors_export') }}"><i class="fas fa-file-csv"></i> {{ tr('Download readings (CSV)','রিডিং ডাউনলোড (CSV)') }}</a></p>
+    <p style="margin:0 0 10px;text-align:right"><a class="btn btn-secondary btn-sm" href="{{ url_for('sensors.sensors_export') }}"><i class="fas fa-file-csv"></i> {{ tr('Download readings (CSV)','রিডিং ডাউনলোড (CSV)') }}</a></p>
     {% endif %}
     {% for d in devices %}
     <div class="card sn-dev">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <h3 class="card-title"><i class="fas fa-seedling"></i> {{ d.name }} <span class="sn-note">· {{ d.farm_name }} · …{{ d.token_hint }}</span></h3>
-        <form method="POST" action="{{ url_for('sensors_delete', did=d.id) }}" data-confirm="{{ tr('Delete this sensor and its readings?','এই সেন্সর ও এর রিডিং মুছবেন?') }}">
+        <form method="POST" action="{{ url_for('sensors.sensors_delete', did=d.id) }}" data-confirm="{{ tr('Delete this sensor and its readings?','এই সেন্সর ও এর রিডিং মুছবেন?') }}">
           <button class="btn btn-danger btn-sm btn-icon" type="submit" title="{{ tr('Delete','মুছুন') }}"><i class="fas fa-trash"></i></button>
         </form>
       </div>
@@ -122,7 +122,7 @@
         {% else %}
           <p class="sn-note">{{ tr('No readings yet.','এখনো কোনো রিডিং নেই।') }}</p>
         {% endif %}
-        <form method="POST" action="{{ url_for('sensors_manual_reading', did=d.id) }}" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">
+        <form method="POST" action="{{ url_for('sensors.sensors_manual_reading', did=d.id) }}" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">
           <div><label class="form-label">{{ tr('Moisture %','আর্দ্রতা %') }}</label><input type="number" name="moisture" class="form-control" min="0" max="100" step="0.1" required style="width:110px"/></div>
           <div><label class="form-label">{{ tr('Temp °C (optional)','তাপ °C (ঐচ্ছিক)') }}</label><input type="number" name="temp" class="form-control" min="-20" max="70" step="0.1" style="width:130px"/></div>
           <button class="btn btn-secondary btn-sm" type="submit"><i class="fas fa-pen"></i> {{ tr('Add reading by hand','হাতে রিডিং দিন') }}</button>

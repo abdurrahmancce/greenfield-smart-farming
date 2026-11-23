@@ -4,12 +4,12 @@
     expected income = expected yield x price per kg
     expected profit = income - (expenses so far + costs still to come)
 
-The "typical" yield per acre of 9 crops is anchored to Bangladesh national averages (BBS Yearbook of Agricultural
-Statistics 2022/23 as quoted in the IFPRI 2024 food-security report; BBS FY2023-24 via The Business Standard; DAE via
-Daily Sun; BBS via UNB) converted from t/ha with 1 t/ha = 404.7 kg/acre. The low/high ends are a judgement around that
-average (for some crops widened using the best district figures); they are not official numbers. Jute, garlic, chilli
-and ginger could not be checked and remain rough estimates (see UNVERIFIED). A farmer's own number (entered per farm)
-always replaces all of these, and the page says which one was used.
+The "typical" yield per acre is the national average from the BBS "Yearbook of Agricultural Statistics-2023"
+(Table 2.1.1, kg per acre, 2022-23; potato = production / area). The low/high ends are a judgement around that
+average (for some crops widened using the best district or the newer BBS/DAE figures); they are NOT official numbers.
+Rice is BBS "rice" = milled (clean) rice, not paddy: paddy weighs about 1.5x more. Chilli is the one crop left
+flagged (see UNVERIFIED). A farmer's own number (entered per farm) always replaces all of these, and the page says
+which one was used. Sources and arithmetic: docs/YIELD_SOURCES.md.
 Prices come from, in this order: the farmer's own price for the farm, the price the farmer last recorded on the
 Market page, or - as a last resort - 70% of the sample wholesale reference (farm-gate is usually below wholesale).
 Weather, disease and market swings are not modelled, so the result is an estimate, never a promise.
@@ -18,24 +18,24 @@ MAUND_KG = 40.0                      # 1 maund = 40 kg (Bangladesh)
 FARMGATE_FACTOR = 0.70               # market-table prices are Dhaka wholesale samples; farm-gate is usually lower, so use 70%
 SPREAD = 0.20                        # a farmer-entered yield is shown as  -20% .. +20%
 
-# crop key (see farm_tasks.crop_key) -> (low, typical, high) kg per acre.  "typical" = national average where sourced.
+# crop key (see farm_tasks.crop_key) -> (low, typical, high) kg per acre.  "typical" = BBS Yearbook 2023, 2022-23.
 YIELD_KG_PER_ACRE = {
-    "rice":    (1000, 1350, 1900),   # paddy; BBS 2022/23 all-rice 3.3 t/ha (aus/aman 2.7, boro 4.2) -> 1,335
-    "wheat":   (1000, 1400, 1700),   # BBS 2022/23 3.4-3.7 t/ha (two figures in source) -> 1,376-1,497
-    "potato":  (7000, 9400, 11000),  # BBS FY25 production / area (UNB) = 9.4 t/acre (derived)
-    "tomato":  (4000, 6000, 10000),  # BBS 2022/23 15.1 t/ha -> 6,110 (FAO 2024: 15.8); best district 29.2 t/ha
-    "maize":   (3000, 4000, 4400),   # BBS winter maize FY24 4,003 kg/acre, FY25 4,356 (TBS)
-    "mustard": (350, 520, 1000),     # BBS 2022/23 1.3 t/ha -> 526; best district 2.5 t/ha
-    "onion":   (4000, 5800, 7000),   # DAE FY23-24 14.6 t/ha -> 5,920 (Daily Sun); FY23 13.9
-    "brinjal": (3500, 5000, 8000),   # BBS 2022/23 12.3 t/ha -> 4,978; best district 20.5 t/ha
-    "lentil":  (350, 570, 900),      # BBS 2022/23 1.4 t/ha -> 567; best district 2.2 t/ha
-    # --- NOT checked against any official source: rough estimates ---
-    "jute":    (700, 900, 1100),     # fibre
-    "garlic":  (2000, 2800, 3600),
-    "chilli":  (400, 700, 1000),     # dry chilli
-    "ginger":  (2500, 3500, 5000),
+    "rice":    (1000, 1360, 1750),   # milled rice. BBS: all 1,362 (aus 1,106 / aman 1,090 / boro 1,732)
+    "wheat":   (1100, 1490, 1700),   # BBS 1,494
+    "potato":  (7000, 9300, 11000),  # BBS 10,432k t / 1,125k acres = 9,273 (derived)
+    "tomato":  (4000, 6100, 10000),  # BBS 6,098; best district 29.2 t/ha (IFPRI 2024)
+    "maize":   (3000, 3700, 4400),   # BBS 3,718 (winter maize FY24 4,003, FY25 4,356 per TBS)
+    "mustard": (350, 580, 1000),     # BBS 578; best district 2.5 t/ha
+    "onion":   (4000, 5100, 7000),   # BBS 5,065 (DAE FY24: 14.64 t/ha = 5,925)
+    "brinjal": (3500, 5100, 8000),   # BBS 5,158 (rabi brinjal only in the part of the table we read)
+    "lentil":  (350, 590, 900),      # BBS 589; best district 2.2 t/ha
+    "jute":    (650, 850, 1100),     # fibre. BBS 4.69 bales/acre x 181.43 kg = 851
+    "garlic":  (2000, 3100, 4000),   # BBS 3,099
+    "ginger":  (2500, 3260, 4500),   # BBS 3,259
+    # --- chilli: BBS basis unclear (green or dry not stated; printed total yield 5,702 contradicts production/area) ---
+    "chilli":  (1800, 2700, 3600),   # production / area = 662k t / 240k acres = 2,758
 }
-UNVERIFIED = {"jute", "garlic", "chilli", "ginger"}
+UNVERIFIED = {"chilli"}
 # crop key -> words that identify its row in the market price table
 PRICE_MATCH = {"rice": "rice", "wheat": "wheat", "potato": "potato", "tomato": "tomato", "maize": "maize",
                "mustard": "mustard", "jute": "jute", "onion": "onion", "garlic": "garlic", "brinjal": "brinjal",

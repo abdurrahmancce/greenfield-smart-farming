@@ -9,6 +9,7 @@
   </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=5.0"/>
+  <meta name="description" content="GreenField — a free smart-farming web app for Bangladesh: farm records, weather, crop tasks, disease check, soil sensors and a yield and profit forecast. Bangla and English."/>
   <title>{% block title %}GreenField{% endblock %} — Smart Farming</title>
   <link rel="manifest" href="/static/manifest.json"/>
   <meta name="theme-color" content="#1B5E20"/>
@@ -379,12 +380,12 @@
       <a class="nav-link" href="{{ url_for('growth_page') }}"><i class="fas fa-seedling"></i> {{ 'ফসল ট্র্যাকার' if is_bn else 'Growth Tracker' }}</a>
       <a class="nav-link" href="{{ url_for('irrigation_page') }}"><i class="fas fa-tint"></i> {{ 'সেচ লগ' if is_bn else 'Irrigation Log' }}</a>
       <a class="nav-link" href="{{ url_for('expenses_page') }}"><i class="fas fa-coins"></i> {{ 'আয়-ব্যয় ট্র্যাকার' if is_bn else 'Expense Tracker' }}</a>
-      <a class="nav-link" href="{{ url_for('sensors_page') }}"><i class="fas fa-satellite-dish"></i> {{ 'মাটির সেন্সর' if is_bn else 'Soil Sensors' }}</a>
+      <a class="nav-link" href="{{ url_for('sensors.sensors_page') }}"><i class="fas fa-satellite-dish"></i> {{ 'মাটির সেন্সর' if is_bn else 'Soil Sensors' }}</a>
 
       <div class="nav-section" style="margin-top:6px">{{ 'বাজার ও পরিকল্পনা' if is_bn else 'Market & Planning' }}</div>
       <a class="nav-link" href="{{ url_for('market_page') }}"><i class="fas fa-chart-bar"></i> {{ 'বাজার দর' if is_bn else 'Market Prices' }}</a>
       <a class="nav-link" href="{{ url_for('calendar_page') }}"><i class="fas fa-calendar-alt"></i> {{ 'ফসল ক্যালেন্ডার' if is_bn else 'Crop Calendar' }}</a>
-      <a class="nav-link" href="{{ url_for('forecast_page') }}"><i class="fas fa-wand-magic-sparkles"></i> {{ 'ফলন পূর্বাভাস' if is_bn else 'Forecast' }}</a>
+      <a class="nav-link" href="{{ url_for('forecast.forecast_page') }}"><i class="fas fa-wand-magic-sparkles"></i> {{ 'ফলন পূর্বাভাস' if is_bn else 'Forecast' }}</a>
       {% if is_admin %}<a class="nav-link" href="{{ url_for('admin_panel') }}"><i class="fas fa-chart-pie"></i> Admin</a>{% endif %}
       <a class="nav-link" href="{{ url_for('report_page') }}"><i class="fas fa-file-pdf"></i> {{ 'খামার রিপোর্ট' if is_bn else 'Farm Report' }}</a>
 

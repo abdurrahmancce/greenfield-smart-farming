@@ -1,23 +1,32 @@
 # Forecast yield table — sources and limits
 
-Conversion: 1 t/ha = 404.7 kg/acre. "Typical" = national average; low/high = judgement around it (not official).
+**Primary source:** Bangladesh Bureau of Statistics (BBS), *Yearbook of Agricultural Statistics-2023* (June 2024),
+Table 2.1.1 "Area, Yield Rate and Production of Crops", pp. 41-43 (yield in kg per acre, 2022-23).
+PDF: https://objectstorage.ap-dcc-gazipur-1.oraclecloud15.com/n/axvjbnqprylg/b/V2Ministry/o/office-bbs/2024/12/d09f33a6167a46fd980e5797749de63d.pdf
 
-| Crop | Typical kg/acre | Source figure |
-|---|---|---|
-| Rice | 1,350 | BBS Yearbook 2022/23 via IFPRI 2024: all rice 3.3 t/ha (aus 2.7, aman 2.7, boro 4.2) |
-| Wheat | 1,400 | same: 3.4 and 3.7 t/ha (the report gives both) |
-| Maize | 4,000 | BBS winter maize 4,003 kg/acre FY2023-24, 4,356 FY2024-25 (The Business Standard, 18 Dec 2025) |
-| Potato | 9,400 | BBS FY2024-25 production 11.57 Mt / area 1,229,298 acres (UNB); *derived by us* |
-| Tomato | 6,000 | BBS 2022/23 15.1 t/ha (IFPRI 2024); FAO 2024: 15.8 |
-| Brinjal | 5,000 | 12.3 t/ha (IFPRI 2024, figure labels matched by order — approximate) |
-| Onion | 5,800 | DAE FY2023-24 14.64 t/ha, FY2023 13.86 (Daily Sun, 28 Jun 2024) |
-| Lentil | 570 | 1.4 t/ha (IFPRI 2024) |
-| Mustard | 520 | 1.3 t/ha (IFPRI 2024) |
-| Jute, garlic, chilli, ginger | — | **not verified**, rough estimates |
+"Typical" = that national average. Low/high = judgement around it (NOT official), widened for some crops using the
+best district figures (IFPRI 2024) or newer BBS/DAE numbers.
 
-Links: IFPRI report https://bangladesh.ifpri.info/files/2024/11/IFPRI_Food-Security-in-Bangladesh_Report_November-2024.pdf ·
-TBS https://www.tbsnews.net/agriculture/crop-and-fodder-production-rises-output-pulses-and-some-cash-crops-declines-1313471 ·
-UNB https://unb.com.bd/category/Bangladesh/aman-rice-onion-and-soybean-increased-in-2025-25-bbs/199294 ·
-Daily Sun https://www.daily-sun.com/post/755054 · FAO via https://geofactbook.com/countries/bangladesh/tomato-yield-per-hectare
+| Crop | Typical kg/acre | BBS 2022-23 figure | Notes |
+|---|---|---|---|
+| Rice | 1,360 | 1,362 (aus 1,106 · aman 1,090 · boro 1,732) | BBS rice is milled rice; paddy ≈ 1.5× heavier (basis inferred from BBS's paddy-to-rice conversion note, p. 5) |
+| Wheat | 1,490 | 1,494 | |
+| Maize | 3,700 | 3,718 | winter maize is higher: 4,003 (FY24), 4,356 (FY25) per BBS via TBS |
+| Potato | 9,300 | 10,432k t ÷ 1,125k acres = 9,273 | derived by us; yield column not read |
+| Tomato | 6,100 | 6,098 | FAO 2024: 15.8 t/ha ≈ 6,400 |
+| Brinjal | 5,100 | 5,158 | rabi brinjal only (kharif part of the table not read) |
+| Onion | 5,100 | 5,065 | DAE FY24 14.64 t/ha ≈ 5,925 |
+| Lentil | 590 | 589 | |
+| Mustard | 580 | 578 | |
+| Jute | 850 | 4.69 bales/acre × 181.43 kg = 851 | fibre |
+| Garlic | 3,100 | 3,099 | |
+| Ginger | 3,260 | 3,259 | |
+| Chilli | 2,700 | production ÷ area = 662k t ÷ 240k acres = 2,758 | **uncertain**: green vs dry is not stated, and the printed total yield (5,702) contradicts production ÷ area; kharif 2,685 / rabi 3,016 agree with the derived value |
 
-Caveat: figures were read from news/report text, not from the BBS yearbook tables directly. National averages differ a lot by district and season.
+Other sources used for cross-checks: IFPRI, *Food Security and Nutrition in Bangladesh* (Nov 2024);
+The Business Standard (BBS maize/onion/lentil/mustard, 18 Dec 2025); UNB (BBS potato/onion area & production);
+Daily Sun (DAE onion yields, 28 Jun 2024); FAO tomato yield via Geo Factbook.
+
+Honest limits: figures were read from an automated text extraction of a 1,400-page PDF (only the first ~100,000
+characters), not by eye from the printed tables — spot-check a few against the PDF before quoting them in a thesis.
+National averages differ a lot by district and season.
