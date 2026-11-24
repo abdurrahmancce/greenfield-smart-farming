@@ -35,7 +35,7 @@ jobs:
                 --symmetric --cipher-algo AES256 --s2k-mode 3 --s2k-count 65011712 -o "$OUT.gpg" backup.sql.gz
           fi
           shred -u backup.sql.gz 2>/dev/null || rm -f backup.sql.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: db-backup
           path: |
