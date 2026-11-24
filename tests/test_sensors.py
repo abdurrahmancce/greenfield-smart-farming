@@ -1,4 +1,5 @@
 import re
+from routes.sensors import MAX_DEVICES_PER_USER
 from conftest import A, H
 import farm_tasks as ft
 
@@ -96,7 +97,7 @@ def test_device_limit_and_login_required(client):
     c, fid = _user()
     for i in range(7):
         c.post("/sensors/add", data={"farm_id": str(fid), "name": f"s{i}"}, headers=H)
-    assert _count("sensor_devices") == A.MAX_DEVICES_PER_USER
+    assert _count("sensor_devices") == MAX_DEVICES_PER_USER
     anon = A.app.test_client()
     assert anon.get("/sensors").status_code in (302, 401)
 

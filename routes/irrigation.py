@@ -4,6 +4,7 @@ from flask import Blueprint
 bp = Blueprint("irrigation", __name__)
 
 from app import (
+    _log,
     OPENWEATHER_KEY,
     USE_POSTGRES,
     current_user,
@@ -50,7 +51,7 @@ def irrigation_page():
         )
         weather_tip = "🌧️ Rain expected in the next 24 hours — irrigation may not be needed." if rain_soon else "☀️ No rain expected — consider irrigating your crops."
     except Exception:
-        pass
+        _log.debug("ignored error", exc_info=True)
     conn.close()
     today = datetime.now().strftime("%Y-%m-%d")
     return render_template("irrigation.html", farms=farms, logs=logs, weather_tip=weather_tip, today=today)

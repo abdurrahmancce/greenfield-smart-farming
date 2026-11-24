@@ -3,6 +3,7 @@ GreenField Smart Farming App — app.py v7
 Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profile Photo | Full CRUD
 """
 import os
+import logging
 import re
 import requests, sqlite3, json, hashlib, hmac, secrets, base64, string
 from datetime import datetime, timedelta, timezone
@@ -41,6 +42,7 @@ MAIL_FROM     = os.environ.get("MAIL_FROM", "") or MAIL_USERNAME      # must be 
 MAIL_ENABLED  = bool(BREVO_API_KEY and MAIL_FROM) or bool(MAIL_SERVER and MAIL_USERNAME and MAIL_PASSWORD)
 APP_BASE_URL  = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 
+_log = logging.getLogger("greenfield")
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024    # photo uploads (profile photo / disease photo)
 _sk = os.environ.get("SECRET_KEY", "")
@@ -203,7 +205,7 @@ def get_db():
         if has_request_context():
             g.setdefault("_gf_conns", []).append(conn)
     except Exception:
-        pass
+        _log.debug("ignored error", exc_info=True)
     return conn
 
 @app.teardown_request
@@ -212,11 +214,11 @@ def _close_leaked_connections(exc):
         try:
             c.rollback() if exc else None
         except Exception:
-            pass
+            _log.debug("ignored error", exc_info=True)
         try:
             c.close()
         except Exception:
-            pass
+            _log.debug("ignored error", exc_info=True)
 
 
 def migrate_db(conn):
@@ -243,7 +245,7 @@ def migrate_db(conn):
             try:
                 conn.rollback()
             except Exception:
-                pass
+                _log.debug("ignored error", exc_info=True)
 
 
 _ACCOUNT_ALPHABET = "".join(c for c in string.ascii_uppercase + string.digits if c not in "01OIL")
@@ -277,7 +279,7 @@ def backfill_account_ids(conn):
     except Exception as e:
         print("[account_id backfill]", e)
         try: conn.rollback()
-        except Exception: pass
+        except Exception: _log.debug("ignored error", exc_info=True)
 
 
 def init_db():
@@ -474,7 +476,7 @@ def log_activity(action, target, detail=""):
         conn.commit()
         conn.close()
     except Exception:
-        pass
+        _log.debug("ignored error", exc_info=True)
 
 
 def send_reset_email(to_email, name, reset_link):
@@ -730,6 +732,7 @@ def csrf_origin_check():
                 return jsonify({"error": "Blocked: cross-site request."}), 403
         elif request.headers.get("Sec-Fetch-Site") == "cross-site":
             return jsonify({"error": "Blocked: cross-site request."}), 403
+    return None
 
 @app.after_request
 def security_headers(resp):
@@ -936,7 +939,7 @@ def _get_weather_uncached(city="Chittagong"):
                     uv_data = json.loads(r2.read())
                     uv_index = round(uv_data.get("value", 0), 1)
             except Exception:
-                pass  # UV endpoint unavailable on some free-tier keys — keep dash rather than fail the whole request
+                _log.debug("ignored error", exc_info=True)  # UV endpoint unavailable on some free-tier keys — keep dash rather than fail the whole request
 
             # OpenWeather's free plan gives 3-hourly data for ~5 days: group it by calendar day.
             days_map, order = {}, []
@@ -1062,7 +1065,7 @@ def login():
             session["user_id"]   = user["id"]
             session["user_name"] = user["name"]
             try: session["sv"] = int(user["sess_ver"] or 0)
-            except Exception: pass
+            except Exception: _log.debug("ignored error", exc_info=True)
             flash(f"👋 Welcome back, <strong>{_esc(user['name'])}</strong>!", "success")
             return redirect(safe_next(request.args.get("next")) or url_for("dashboard"))
         throttle_hit(k_ip); throttle_hit(k_em)
@@ -1942,7 +1945,7 @@ def disease_page():
         cur.execute(f"SELECT id, farm_name, crop_type FROM farms WHERE user_id={ph} ORDER BY farm_name", (session["user_id"],))
         farms = cur.fetchall(); conn.close()
     except Exception:
-        pass
+        _log.debug("ignored error", exc_info=True)
     return render_template("disease.html", farms=farms)
 
 @app.route("/api/disease-detect", methods=["POST"])
@@ -2045,7 +2048,7 @@ def _claim_cid(conn, uid, cid):
         conn.execute(f"INSERT INTO offline_sync (user_id,cid) VALUES ({ph},{ph})", (uid, cid))
     except Exception:                                   # two requests raced: the other one won
         try: conn.rollback()
-        except Exception: pass
+        except Exception: _log.debug("ignored error", exc_info=True)
         return False
     return True
 
@@ -2122,7 +2125,7 @@ def api_offline_sync():
         except Exception as ex:
             print("[offline-sync]", type(ex).__name__)
             try: conn.rollback()
-            except Exception: pass
+            except Exception: _log.debug("ignored error", exc_info=True)
             ok, msg = False, "could not save"
         (done if ok else rejected).append(cid if ok else {"cid": cid, "reason": msg})
     conn.close()
@@ -2258,7 +2261,7 @@ def market_view(prices, source, lang="en", uid=None):
                 live.setdefault(r["crop"], []).append((r["day"], float(r["price"])))
         conn.close()
     except Exception:
-        pass
+        _log.debug("ignored error", exc_info=True)
     mon = datetime.now().strftime("%b")
     out = []
     for crop, d in prices.items():
@@ -3090,10 +3093,9 @@ def _bd_label(created_at):
 # Imported here, after every shared helper above is defined; each module does `from app import ...`.
 import sys as _sys
 _sys.modules.setdefault("app", _sys.modules[__name__])      # also correct when started as `python app.py`
-from routes.sensors import bp as _sensors_bp, MAX_DEVICES_PER_USER, SENSOR_KEEP_DAYS, _week_stats   # noqa: E402,F401
-from routes.forecast import bp as _forecast_bp, _price_for, forecast_rows                              # noqa: E402,F401
+from routes.sensors import bp as _sensors_bp   # noqa: E402
+from routes.forecast import bp as _forecast_bp   # noqa: E402
 app.register_blueprint(_sensors_bp)
-_REEXPORTED = (MAX_DEVICES_PER_USER, SENSOR_KEEP_DAYS, _week_stats, _price_for, forecast_rows)   # names tests and other code use as app.X
 app.register_blueprint(_forecast_bp)
 from routes.growth import bp as _growth_bp          # noqa: E402
 from routes.irrigation import bp as _irrigation_bp  # noqa: E402

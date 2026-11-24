@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 import app as appmod
+from routes.sensors import _week_stats
 import forecast as fc
 
 
@@ -89,7 +90,7 @@ def test_week_summary_and_csv_are_private_and_safe(env):
         conn.execute("INSERT INTO sensor_readings (device_id,farm_id,user_id,moisture,temp,source,created_at) VALUES (?,?,?,?,?,?,?)",
                      (dev, farm, uid, m, 25.0, "device", _stamp(now - timedelta(hours=hrs))))
     conn.commit()
-    w = env._week_stats(conn, dev, uid); conn.close()
+    w = _week_stats(conn, dev, uid); conn.close()
     assert w["n"] == 3 and w["min"] == 20.0 and w["max"] == 60.0 and abs(w["avg"] - 40.0) < 1e-9
     assert len(w["days"]) == 7 and sum(1 for d in w["days"] if d["avg"] is not None) >= 1
     # page renders the summary

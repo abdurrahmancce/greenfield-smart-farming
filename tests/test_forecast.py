@@ -1,3 +1,4 @@
+from routes.forecast import _price_for
 import forecast as fc
 from conftest import A, H
 from test_sensors import _user, _count
@@ -79,9 +80,9 @@ def test_recorded_market_price_beats_reference(client):
     uid = A.get_db().execute("SELECT id FROM users").fetchone()["id"]
     cn = A.get_db()
     cn.execute("INSERT INTO price_history (crop, price, day, source, user_id) VALUES ('Wheat', 55, '2026-11-10', 'manual', ?)", (uid,)); cn.commit()
-    price, src, note = A._price_for(cn, uid, "wheat", None); cn.close()
+    price, src, note = _price_for(cn, uid, "wheat", None); cn.close()
     assert (price, src, note) == (55.0, "recorded", "2026-11-10")
-    cn = A.get_db(); p2, s2, _ = A._price_for(cn, uid, "wheat", 70.0); cn.close()
+    cn = A.get_db(); p2, s2, _ = _price_for(cn, uid, "wheat", 70.0); cn.close()
     assert (p2, s2) == (70.0, "yours")
 
 
