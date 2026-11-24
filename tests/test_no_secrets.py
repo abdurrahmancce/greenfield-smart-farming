@@ -39,7 +39,8 @@ def test_no_secret_looking_strings_in_the_project():
         if not path.endswith(TEXT_EXT) or os.path.abspath(path) == os.path.abspath(__file__):
             continue
         try:
-            text = open(path, encoding="utf-8", errors="ignore").read()
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                text = fh.read()
         except OSError:
             continue
         for label, rx in PATTERNS.items():

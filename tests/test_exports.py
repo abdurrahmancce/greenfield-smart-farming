@@ -1,4 +1,3 @@
-import io
 from conftest import A, H
 import exports
 

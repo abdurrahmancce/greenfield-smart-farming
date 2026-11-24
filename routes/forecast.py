@@ -1,6 +1,8 @@
 """Forecast routes (blueprint). Shared helpers are imported from app.py, which registers this blueprint after defining them."""
 from flask import Blueprint
 
+import forecast as fc
+
 bp = Blueprint("forecast", __name__)
 
 from app import (
@@ -8,7 +10,6 @@ from app import (
     _utcnow_str,
     datetime,
     farm_tasks,
-    fc,
     flash,
     get_db,
     login_required,

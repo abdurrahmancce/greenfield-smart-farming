@@ -22,7 +22,6 @@ BN = {
     "Smart Farming Platform": "স্মার্ট কৃষি প্ল্যাটফর্ম",
     "Public": "সবার জন্য",
     "Account": "অ্যাকাউন্ট",
-    "My Profile": "আমার প্রোফাইল",
     "Logout": "লগআউট",
     "Install App": "অ্যাপ ইনস্টল করুন",
     "Dashboard": "ড্যাশবোর্ড",
@@ -30,7 +29,6 @@ BN = {
     "My Data": "আমার তথ্য",
     "Overview": "সারসংক্ষেপ",
     "Fertilizer Calc": "সার হিসাব",
-    "Fertilizer Calculator": "সার ক্যালকুলেটর",
     "Close": "বন্ধ করুন",
     "User menu": "ব্যবহারকারী মেনু",
     "Toggle dark mode": "ডার্ক মোড পরিবর্তন",
@@ -43,7 +41,6 @@ BN = {
     "Insights": "বিশ্লেষণ",
     "Home Page": "হোম পেজ",
     "Farm Management": "খামার ব্যবস্থাপনা",
-    "Farm Notes": "খামার নোট",
     "Growth Tracker": "ফসল ট্র্যাকার",
     "Irrigation Log": "সেচ লগ",
     "Expense Tracker": "আয়-ব্যয় ট্র্যাকার",
@@ -142,7 +139,6 @@ BN = {
     "AI Vision": "এআই ভিশন",
     "Take or upload a clear photo of the affected leaf, stem, fruit or whole plant. Optional — you can also use the symptom checker below.": "আক্রান্ত পাতা, কাণ্ড, ফল বা পুরো গাছের একটি স্পষ্ট ছবি তুলুন বা আপলোড করুন। এটি ঐচ্ছিক — নিচের লক্ষণ যাচাইও ব্যবহার করতে পারেন।",
     "Take Photo": "ছবি তুলুন",
-    "Upload Photo": "ছবি আপলোড",
     "Analyze Photo": "ছবি বিশ্লেষণ করুন",
     "How to take a good photo": "ভালো ছবি তোলার নিয়ম",
     "Close-up": "কাছ থেকে",
@@ -224,7 +220,6 @@ BN = {
 
     # ── Farms ────────────────────────────────────────────────────────
     "Add New Farm": "নতুন খামার যোগ করুন",
-    "Farm Name": "খামারের নাম",
     "Location": "অবস্থান",
     "Planted": "রোপিত",
     "Actions": "কাজ",
@@ -277,7 +272,6 @@ BN = {
     "e.g. North Field, Season 2024": "যেমন: উত্তরের জমি, ২০২৪ মৌসুম",
     "Search history…": "ইতিহাসে খুঁজুন…",
     "e.g. North Field": "যেমন: উত্তরের জমি",
-    "Delete this record?": "এই রেকর্ডটি মুছে ফেলবেন?",
     "Please select a crop and enter a valid area.": "অনুগ্রহ করে ফসল বেছে নিন এবং সঠিক জমির পরিমাণ দিন।",
     "Save failed — please try again.": "সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।",
     "Could not load record.": "রেকর্ড লোড করা যায়নি।",
@@ -377,7 +371,6 @@ BN = {
     "Go to My Dashboard": "আমার ড্যাশবোর্ডে যান",
     "Create Free Account": "বিনামূল্যে অ্যাকাউন্ট খুলুন",
     "Farms": "খামার",
-    "Notes": "নোট",
     "Register": "নিবন্ধন",
 
     # ── Irrigation ───────────────────────────────────────────────────
@@ -954,7 +947,7 @@ BN_PATTERNS.extend([
 ])
 
 _WS = re.compile(r"\s+")
-_SCRIPT_STYLE = re.compile(r"(<script\b.*?</script>|<style\b.*?</style>)", re.S | re.I)
+_SCRIPT_STYLE = re.compile(r"(<script\b.*?</script\s*>|<style\b.*?</style\s*>)", re.S | re.I)
 _TEXT = re.compile(r">([^<>]+)<")
 _ATTR = re.compile(r'(\b(?:placeholder|title|aria-label|alt|data-tip)=")([^"]*)(")')
 _TITLE_TAG = re.compile(r"(<title>)([^<]*)(</title>)", re.I)

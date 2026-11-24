@@ -24,7 +24,8 @@ def _names(expr):
 def test_dynamic_sql_uses_only_trusted_names():
     bad = []
     for path in FILES:
-        tree = ast.parse(open(path, encoding="utf-8").read())
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
         for node in ast.walk(tree):
             if not _is_sql_call(node):
                 continue

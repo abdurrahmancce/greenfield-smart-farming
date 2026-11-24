@@ -48,15 +48,18 @@ def main():
     random.seed(1); random.shuffle(items); items = items[:limit]
     done = {}
     if os.path.exists(out):                                   # resume: skip photos already answered
-        for r in csv.DictReader(open(out, encoding="utf-8")):
-            if r["status"] == "answered": done[r["file"]] = r
+        with open(out, encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                if r["status"] == "answered": done[r["file"]] = r
     rows = list(done.values()); errors = 0
     for i, (lab, f) in enumerate(items, 1):
         if f in done: continue
         res = None
         for attempt in range(4):
             try:
-                res = vision.analyze(open(f, "rb").read(), "", "", "en"); break
+                with open(f, "rb") as fh:
+                    res = vision.analyze(fh.read(), "", "", "en")
+                break
             except Exception as e:
                 print(f"[{i}] retry {attempt + 1}/4: {e}"); time.sleep(pause * (attempt + 1) * 2)
         if res is None:

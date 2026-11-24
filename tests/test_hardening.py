@@ -35,3 +35,11 @@ def test_google_redirect_ignores_forged_host(client, monkeypatch):
     r = client.get("/login/google", headers={"Host": "evil.example"})
     loc = r.headers.get("Location", "")
     assert "evil.example" not in loc
+
+
+def test_set_language_only_redirects_to_a_path_on_this_site(client):
+    r = client.get("/set-language/bn", headers={"Referer": "http://localhost/farms?x=1", "Host": "localhost"})
+    assert r.headers["Location"] == "/farms?x=1"
+    for evil in ("http://localhost.evil.example/", "https://evil.example/x", "http://localhost@evil.example/"):
+        r = client.get("/set-language/en", headers={"Referer": evil, "Host": "localhost"})
+        assert "evil" not in r.headers["Location"]

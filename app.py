@@ -3,13 +3,15 @@ GreenField Smart Farming App — app.py v7
 Flask 3 | SQLite (local) / PostgreSQL (production) | Auth | Google OAuth | Profile Photo | Full CRUD
 """
 import os
+import re
 import requests, sqlite3, json, hashlib, hmac, secrets, base64, string
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from calendar import month_abbr
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (Flask, render_template, request, redirect,
                    url_for, jsonify, flash, session, Response, abort,
-                   g, has_request_context, make_response)
+                   g, has_request_context)
 import i18n
 import vision
 import farm_tasks
@@ -907,6 +909,9 @@ def get_weather(city="Chittagong"):
 
 def _get_weather_uncached(city="Chittagong"):
     import urllib.request, urllib.parse
+    # the city only ever goes into the query string of a fixed https host; still keep it to plain place-name characters
+    if not re.fullmatch(r"[\w\s,.'\-]{1,80}", city or "", re.U):
+        city = "Chittagong"
     if OPENWEATHER_KEY:
         try:
             q = urllib.parse.quote(city)
@@ -1192,7 +1197,6 @@ def google_callback():
             flash("Your Google email is not verified, so we cannot sign you in with it.", "error")
             return redirect(url_for("login"))
         name      = user_info.get("name", "Google User")
-        picture   = user_info.get("picture", "")
 
         conn = get_db()
         # Check if user exists by google_id or email
@@ -1238,7 +1242,7 @@ def google_callback():
         session.permanent = True
         flash(f"✅ Logged in with Google as {_esc(uname)}.", "success")
         return redirect(url_for("dashboard"))
-    except Exception as e:
+    except Exception:
         flash("Google login failed. Please try again.", "error")
         return redirect(url_for("login"))
 
@@ -1684,7 +1688,7 @@ def edit_fertilizer(rid):
     crop = d.get("crop_type","").strip()
     label= d.get("label","").strip()
     try:   area = float(d.get("area","1"))
-    except: area = 1.0
+    except (ValueError, TypeError): area = 1.0
     result = calc_fertilizer(crop, area)
     conn = get_db()
     conn.execute(
@@ -1769,7 +1773,6 @@ def analytics():
     expense_real = []
     for lbl in month_labels:
         # find year/month from label
-        from calendar import month_abbr
         abbr_list = list(month_abbr)  # ['', 'Jan', 'Feb', ...]
         mo_num = abbr_list.index(lbl)
         yr_now = today_d.year if mo_num <= today_d.month else today_d.year - 1
@@ -1784,7 +1787,6 @@ def analytics():
     # ── Real income data ──
     income_real = []
     for lbl in month_labels:
-        from calendar import month_abbr
         abbr_list = list(month_abbr)
         mo_num = abbr_list.index(lbl)
         yr_now = today_d.year if mo_num <= today_d.month else today_d.year - 1
@@ -2378,9 +2380,11 @@ def calendar_page():
 def set_language(lang):
     if lang in ("en", "bn"):
         session["lang"] = lang
-    ref = request.referrer or ""
-    if ref.startswith(request.host_url):
-        return redirect(ref)
+    ref = urlparse(request.referrer or "")
+    if ref.netloc == request.host:                      # same site only; redirect to the path, never to a full URL
+        back = safe_next(ref.path + ("?" + ref.query if ref.query else ""))
+        if back:
+            return redirect(back)
     return redirect(url_for("dashboard") if "user_id" in session else url_for("index"))
 
 
@@ -3049,7 +3053,6 @@ def api_cron_alerts():
 #  SOIL SENSORS  (a device sends readings with its own secret token; the owner sees them here)
 #  No hardware is required: readings can also be typed in by hand or sent by tools/sensor_simulator.py
 # ══════════════════════════════════════════════════════════════════
-import forecast as fc
 
 @app.template_global()
 def tr(en, bn):
@@ -3090,6 +3093,7 @@ _sys.modules.setdefault("app", _sys.modules[__name__])      # also correct when 
 from routes.sensors import bp as _sensors_bp, MAX_DEVICES_PER_USER, SENSOR_KEEP_DAYS, _week_stats   # noqa: E402,F401
 from routes.forecast import bp as _forecast_bp, _price_for, forecast_rows                              # noqa: E402,F401
 app.register_blueprint(_sensors_bp)
+_REEXPORTED = (MAX_DEVICES_PER_USER, SENSOR_KEEP_DAYS, _week_stats, _price_for, forecast_rows)   # names tests and other code use as app.X
 app.register_blueprint(_forecast_bp)
 from routes.growth import bp as _growth_bp          # noqa: E402
 from routes.irrigation import bp as _irrigation_bp  # noqa: E402

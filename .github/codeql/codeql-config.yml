@@ -1,0 +1,4 @@
+# Test code and developer tools are not deployed; their style notes are not security findings.
+paths-ignore:
+  - tests
+  - tools

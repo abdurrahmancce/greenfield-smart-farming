@@ -1,5 +1,5 @@
 """Sensors routes (blueprint). Shared helpers are imported from app.py, which registers this blueprint after defining them."""
-from flask import Blueprint
+from flask import Blueprint, make_response
 
 bp = Blueprint("sensors", __name__)
 
@@ -19,7 +19,6 @@ from app import (
     hash_token,
     jsonify,
     login_required,
-    make_response,
     owned_farm_id,
     redirect,
     render_template,

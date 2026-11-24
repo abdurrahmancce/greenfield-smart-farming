@@ -11,12 +11,10 @@ from app import (
     flash,
     get_db,
     login_required,
-    notes,
     owned_farm_id,
     redirect,
     render_template,
     request,
-    timedelta,
     to_int,
     url_for,
     valid_date,
@@ -59,7 +57,7 @@ def add_growth():
         return redirect(url_for("growth.growth_page"))
     ph = "%s" if USE_POSTGRES else "?"
     # Calculate harvest date
-    from datetime import date, timedelta
+    from datetime import timedelta
     pd = datetime.strptime(planting_date, "%Y-%m-%d")
     harvest_date = (pd + timedelta(days=expected_days)).strftime("%Y-%m-%d")
     conn.execute(
