@@ -620,6 +620,8 @@ BN = {
     "Please log in to continue.": "চালিয়ে যেতে অনুগ্রহ করে লগইন করুন।",
     "Full name is required.": "পুরো নাম দিতে হবে।",
     "Email is required.": "ইমেইল দিতে হবে।",
+    "That password is too common - choose something less guessable.": "এই পাসওয়ার্ডটি খুব সহজ — আরও কঠিন কিছু বেছে নিন।",
+    "The password must not be the same as your name or e-mail.": "পাসওয়ার্ড আপনার নাম বা ইমেইলের মতো হতে পারবে না।",
     "Password must be at least 8 characters.": "পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।",
     "Too many failed sign-in attempts. Please wait 15 minutes and try again, or use “Forgot password”.": "অনেকবার ভুল লগইন চেষ্টা হয়েছে। ১৫ মিনিট অপেক্ষা করে আবার চেষ্টা করুন, অথবা “পাসওয়ার্ড ভুলে গেছেন” ব্যবহার করুন।",
     "Too many reset requests. Please try again in an hour.": "অনেকবার রিসেটের অনুরোধ হয়েছে। এক ঘণ্টা পরে আবার চেষ্টা করুন।",

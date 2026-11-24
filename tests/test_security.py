@@ -6,7 +6,7 @@ from conftest import A, H
 
 def _mk(client_factory, email, name="U"):
     c = A.app.test_client()
-    c.post("/register", data={"name": name, "email": email, "password": "password1", "confirm": "password1"}, headers=H)
+    c.post("/register", data={"name": name, "email": email, "password": "Gf-test-pw-91", "confirm": "Gf-test-pw-91"}, headers=H)
     return c
 
 
@@ -85,7 +85,7 @@ def test_google_login_rules(client, monkeypatch):
     assert with_info({"sub": "s1", "email": "v@gmail.com", "email_verified": False}).get("/dashboard").status_code == 302
     # verified -> ok, and the attacker's password stops working
     assert with_info({"sub": "s1", "email": "v@gmail.com", "email_verified": True}).get("/dashboard").status_code == 200
-    r = A.app.test_client().post("/login", data={"email": "v@gmail.com", "password": "password1"}, headers=H)
+    r = A.app.test_client().post("/login", data={"email": "v@gmail.com", "password": "Gf-test-pw-91"}, headers=H)
     assert r.status_code == 200                                  # login page again, not a redirect
     assert victim_pre.get("/dashboard").status_code == 302       # old session was signed out
     # a different Google account with the same e-mail cannot take it over
@@ -98,7 +98,7 @@ def test_account_delete_removes_everything(client):
     c.post("/expenses/add", data={"farm_id": fid, "amount": "5", "date": "2026-01-01"}, headers=H)
     c.post("/growth/add", data={"farm_id": fid, "planting_date": "2026-01-01"}, headers=H)
     c.post("/irrigation/add", data={"farm_id": fid, "date": "2026-01-01", "water_liters": "3"}, headers=H)
-    c.post("/profile", data={"action": "delete_account", "delete_password": "password1", "delete_confirm": "DELETE"}, headers=H)
+    c.post("/profile", data={"action": "delete_account", "delete_password": "Gf-test-pw-91", "delete_confirm": "DELETE"}, headers=H)
     cn = A.get_db()
     for t in ("users", "farms", "expense_log", "crop_growth", "irrigation_log", "push_subs"):
         assert cn.execute(f"SELECT count(*) n FROM {t}").fetchone()["n"] == 0, t

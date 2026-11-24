@@ -5,7 +5,7 @@ import farm_tasks as ft
 
 def _user(email="s@x.co", crop="Tomato"):
     c = A.app.test_client()
-    c.post("/register", data={"name": "S", "email": email, "password": "password1", "confirm": "password1"}, headers=H)
+    c.post("/register", data={"name": "S", "email": email, "password": "Gf-test-pw-91", "confirm": "Gf-test-pw-91"}, headers=H)
     c.post("/farms/add", data={"farm_name": "F", "crop_type": crop, "location": "L", "planting_date": "2026-01-01", "area": "2"}, headers=H)
     cn = A.get_db(); fid = cn.execute("SELECT id FROM farms WHERE user_id=(SELECT id FROM users WHERE email=?)", (email,)).fetchone()["id"]; cn.close()
     return c, fid

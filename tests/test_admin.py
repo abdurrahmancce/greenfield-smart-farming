@@ -3,7 +3,7 @@ from conftest import A, H
 
 def _u(email):
     c = A.app.test_client()
-    c.post("/register", data={"name": "N", "email": email, "password": "password1", "confirm": "password1"}, headers=H)
+    c.post("/register", data={"name": "N", "email": email, "password": "Gf-test-pw-91", "confirm": "Gf-test-pw-91"}, headers=H)
     return c
 
 

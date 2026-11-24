@@ -7,3 +7,7 @@ threads = 4            # several requests at once, so a slow AI call does not bl
 timeout = 120
 graceful_timeout = 30
 preload_app = True     # initialise the DB once at boot -> faster wake-up
+# Refuse absurdly large request lines / headers instead of buffering them (cheap abuse protection).
+limit_request_line = 4094
+limit_request_fields = 60
+limit_request_field_size = 8190

@@ -614,6 +614,22 @@ def hash_token(t):
     return hashlib.sha256(t.encode()).hexdigest()
 
 MIN_PASSWORD = 8
+_COMMON_PASSWORDS = {
+    "password", "password1", "password12", "password123", "passw0rd", "12345678", "123456789", "1234567890",
+    "123123123", "11111111", "00000000", "987654321", "qwertyui", "qwerty123", "qwertyuiop", "1q2w3e4r",
+    "iloveyou", "admin123", "welcome1", "letmein1", "abc12345", "abcd1234", "bangladesh", "bangladesh1",
+    "greenfield", "greenfield1", "greenfield123", "farmer123", "01700000000", "dhaka1234", "chittagong",
+}
+
+def weak_password_reason(password, email="", name=""):
+    """Return an English message if the password is too easy to guess, else None."""
+    pw = (password or "").strip().lower()
+    if pw in _COMMON_PASSWORDS or len(set(pw)) <= 2:
+        return "That password is too common - choose something less guessable."
+    local = (email or "").split("@")[0].strip().lower()
+    if (local and len(local) >= 4 and pw == local) or (name and len(name) >= 4 and pw == name.strip().lower()):
+        return "The password must not be the same as your name or e-mail."
+    return None
 _DUMMY_HASH = generate_password_hash("gf-dummy-password-for-timing")
 
 @app.before_request
@@ -719,6 +735,8 @@ def security_headers(resp):
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)")
+    resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")      # isolate this site from pop-up windows of other sites
+    resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")      # other sites may not embed our files/data
     nonce = g.get("csp_nonce")
     script_src = "script-src 'self'" + (f" 'nonce-{nonce}'" if nonce else "")
     resp.headers.setdefault("Content-Security-Policy", "; ".join([
@@ -983,6 +1001,7 @@ def register():
         if not name:              errors.append("Full name is required.")
         if not email:             errors.append("Email is required.")
         if len(password) < MIN_PASSWORD: errors.append(f"Password must be at least {MIN_PASSWORD} characters.")
+        elif weak_password_reason(password, email, name): errors.append(weak_password_reason(password, email, name))
         if throttle_blocked("reg:" + client_ip(), 10, 3600):
             errors.append("Too many sign-up attempts from this network. Please try again later.")
         if password != confirm:   errors.append("Passwords do not match.")
@@ -1152,7 +1171,9 @@ def google_login():
     if not GOOGLE_OAUTH_ENABLED:
         flash("Google login is not configured.", "error")
         return redirect(url_for("login"))
-    redirect_uri = url_for("google_callback", _external=True)
+    # Built from the configured public address on HTTPS, so a forged Host header cannot change where Google sends the user.
+    redirect_uri = (APP_BASE_URL.rstrip("/") + url_for("google_callback")) if APP_BASE_URL.startswith("https://") \
+        else url_for("google_callback", _external=True)
     return google.authorize_redirect(redirect_uri)
 
 @app.route("/login/google/callback")
@@ -1289,6 +1310,8 @@ def reset_password(token):
 
         if len(new_pw) < MIN_PASSWORD:
             flash(f"Password must be at least {MIN_PASSWORD} characters.", "error")
+        elif weak_password_reason(new_pw):
+            flash(weak_password_reason(new_pw), "error")
         elif new_pw != confirm:
             flash("Passwords do not match.", "error")
         else:
@@ -1366,6 +1389,8 @@ def profile():
                 flash("Current password is incorrect.", "error")
             elif len(new_pw) < MIN_PASSWORD:
                 flash(f"New password must be at least {MIN_PASSWORD} characters.", "error")
+            elif weak_password_reason(new_pw):
+                flash(weak_password_reason(new_pw), "error")
             elif new_pw != confirm_pw:
                 flash("Passwords do not match.", "error")
             else:
@@ -2526,6 +2551,19 @@ def export_download(kind, fmt):
 # ══════════════════════════════════════════════════════════════════
 #  PWA / uptime helpers
 # ══════════════════════════════════════════════════════════════════
+@app.route("/.well-known/security.txt")
+@app.route("/security.txt")
+def security_txt():
+    """RFC 9116 contact file so researchers know how to report a problem privately."""
+    exp = (datetime.now(timezone.utc) + timedelta(days=365)).strftime("%Y-%m-%dT00:00:00Z")
+    body = ("Contact: https://github.com/abdurrahmancce/greenfield-smart-farming/security/advisories/new\n"
+            f"Expires: {exp}\n"
+            "Preferred-Languages: en, bn\n"
+            "Policy: https://github.com/abdurrahmancce/greenfield-smart-farming/blob/main/SECURITY.md\n")
+    r = Response(body, mimetype="text/plain")
+    r.headers["Cache-Control"] = "public, max-age=86400"
+    return r
+
 @app.route("/healthz")
 def healthz():
     """Tiny, DB-free endpoint for uptime monitors (keeps the free instance awake)."""

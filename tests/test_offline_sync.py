@@ -3,7 +3,7 @@ from conftest import A, H
 
 def _user(email="o@x.co"):
     c = A.app.test_client()
-    c.post("/register", data={"name": "O", "email": email, "password": "password1", "confirm": "password1"}, headers=H)
+    c.post("/register", data={"name": "O", "email": email, "password": "Gf-test-pw-91", "confirm": "Gf-test-pw-91"}, headers=H)
     c.post("/farms/add", data={"farm_name": "F", "crop_type": "Rice", "location": "L", "planting_date": "2026-01-01", "area": "2"}, headers=H)
     cn = A.get_db(); fid = cn.execute("SELECT id FROM farms WHERE user_id=(SELECT id FROM users WHERE email=?)", (email,)).fetchone()["id"]; cn.close()
     return c, fid
@@ -60,5 +60,5 @@ def test_form_post_with_fetch_header_returns_json_and_dedupes(client):
 def test_account_delete_removes_sync_ids(client):
     c, fid = _user()
     c.post("/api/offline/sync", json={"entries": [{"cid": "zzzzzzzz-1", "kind": "expense", "f": {"farm_id": str(fid), "amount": "5", "date": "2026-02-01"}}]}, headers=H)
-    c.post("/profile", data={"action": "delete_account", "delete_password": "password1", "delete_confirm": "DELETE"}, headers=H)
+    c.post("/profile", data={"action": "delete_account", "delete_password": "Gf-test-pw-91", "delete_confirm": "DELETE"}, headers=H)
     assert _count("offline_sync") == 0

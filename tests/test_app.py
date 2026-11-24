@@ -15,7 +15,7 @@ def client(tmp_path):
 
 H = {"Origin": "http://localhost"}
 
-def register(c, email="a@b.co", pw="password1"):
+def register(c, email="a@b.co", pw="Gf-test-pw-91"):
     return c.post("/register", data={"name": "T", "email": email, "password": pw, "confirm": pw}, headers=H, follow_redirects=False)
 
 def test_healthz(client):
@@ -27,7 +27,7 @@ def test_short_password_rejected(client):
 
 def test_register_login_flow(client):
     register(client)
-    r = client.post("/login", data={"email": "a@b.co", "password": "password1"}, headers=H)
+    r = client.post("/login", data={"email": "a@b.co", "password": "Gf-test-pw-91"}, headers=H)
     assert r.status_code in (302, 303)
     assert client.get("/dashboard").status_code == 200
 
@@ -54,7 +54,7 @@ def test_security_headers(client):
 
 def test_tasks_and_export_when_logged_in(client):
     register(client)
-    client.post("/login", data={"email": "a@b.co", "password": "password1"}, headers=H)
+    client.post("/login", data={"email": "a@b.co", "password": "Gf-test-pw-91"}, headers=H)
     r = client.get("/api/today-tasks")
     assert r.status_code == 200 and r.get_json()["tasks"] == []
     assert client.get("/account/export").get_json()["farms"] == []
@@ -73,15 +73,15 @@ def test_irrigate_rule():
 def _login(c, email="s@b.co"):
     register(c, email=email)
     c2 = A.app.test_client()
-    c2.post("/login", data={"email": email, "password": "password1"}, headers=H)
+    c2.post("/login", data={"email": email, "password": "Gf-test-pw-91"}, headers=H)
     return c2
 
 def test_password_change_signs_out_other_devices(client):
     a = _login(client)
     b = A.app.test_client()
-    b.post("/login", data={"email": "s@b.co", "password": "password1"}, headers=H)
+    b.post("/login", data={"email": "s@b.co", "password": "Gf-test-pw-91"}, headers=H)
     assert a.get("/dashboard").status_code == 200 and b.get("/dashboard").status_code == 200
-    a.post("/profile", data={"action": "change_password", "current_password": "password1",
+    a.post("/profile", data={"action": "change_password", "current_password": "Gf-test-pw-91",
                              "new_password": "newpassword2", "confirm_password": "newpassword2"}, headers=H)
     assert a.get("/dashboard").status_code == 200           # the device that changed it stays in
     assert b.get("/dashboard").status_code == 302           # the other one is signed out
@@ -112,7 +112,7 @@ def test_report_renders(client):
 def test_push_test_requires_login_and_config(client):
     assert client.post("/api/push/test", headers=H).status_code in (302, 401, 403)
     register(client)
-    client.post("/login", data={"email": "a@b.co", "password": "password1"}, headers=H)
+    client.post("/login", data={"email": "a@b.co", "password": "Gf-test-pw-91"}, headers=H)
     A.PUSH_ENABLED = False
     assert client.post("/api/push/test", headers=H).status_code == 503
 

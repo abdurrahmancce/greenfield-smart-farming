@@ -12,7 +12,7 @@ def test_harvest_soon_and_irrigate_tasks_exist():
 
 def test_cron_sends_harvest_alert_once_per_window(client, monkeypatch):
     c = A.app.test_client()
-    c.post("/register", data={"name": "H", "email": "h@x.co", "password": "password1", "confirm": "password1"}, headers=H)
+    c.post("/register", data={"name": "H", "email": "h@x.co", "password": "Gf-test-pw-91", "confirm": "Gf-test-pw-91"}, headers=H)
     planted = (date.today() - timedelta(days=110)).isoformat()
     c.post("/farms/add", data={"farm_name": "F", "crop_type": "Rice", "location": "L", "planting_date": planted, "area": "1"}, headers=H)
     cn = A.get_db()
