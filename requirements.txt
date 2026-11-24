@@ -6,4 +6,4 @@ psycopg2-binary>=2.9.10
 authlib>=1.9.1,<2
 httpx>=0.28.1,<0.29
 pywebpush==2.0.0
-reportlab>=4.2,<6
+reportlab>=5.1.0,<6
